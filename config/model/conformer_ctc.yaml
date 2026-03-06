@@ -1,0 +1,15 @@
+# @package _global_
+module:
+  _target_: emg2qwerty.lightning.ConformerCTCModule
+  in_features: 528
+  mlp_features: [384]
+  # Conformer 的超参数：
+  hidden_size: 128
+  num_layers: 4       # 论文中通常是几十层，这里为了你的 5070 能快速跑完，我们用 4 层
+  num_heads: 4        # 注意力头数
+  depthwise_conv_kernel_size: 15
+
+datamodule:
+  _target_: emg2qwerty.lightning.WindowedEMGDataModule
+  window_length: 8000
+  padding: [1800, 200]
