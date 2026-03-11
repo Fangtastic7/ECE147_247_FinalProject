@@ -1,0 +1,2895 @@
+[2026-03-11 10:08:57,421][__main__][INFO] - 
+Config:
+user: single_user
+dataset:
+  train:
+  - user: 89335547
+    session: 2021-06-03-1622765527-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-06-02-1622681518-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-06-04-1622863166-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-07-22-1627003020-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-07-21-1626916256-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-07-22-1627004019-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-06-05-1622885888-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-06-02-1622679967-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-06-03-1622764398-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-07-21-1626917264-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-06-05-1622889105-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-06-03-1622766673-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-06-04-1622861066-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-07-22-1627001995-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-06-05-1622884635-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  - user: 89335547
+    session: 2021-07-21-1626915176-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  val:
+  - user: 89335547
+    session: 2021-06-04-1622862148-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  test:
+  - user: 89335547
+    session: 2021-06-02-1622682789-keystrokes-dca-study@1-0efbe614-9ae6-4131-9192-4398359b4f5f
+  root: ${hydra:runtime.cwd}/data
+to_tensor:
+  _target_: emg2qwerty.transforms.ToTensor
+  fields:
+  - emg_left
+  - emg_right
+band_rotation:
+  _target_: emg2qwerty.transforms.ForEach
+  transform:
+    _target_: emg2qwerty.transforms.RandomBandRotation
+    offsets:
+    - -1
+    - 0
+    - 1
+temporal_jitter:
+  _target_: emg2qwerty.transforms.TemporalAlignmentJitter
+  max_offset: 120
+logspec:
+  _target_: emg2qwerty.transforms.LogSpectrogram
+  n_fft: 64
+  hop_length: 16
+specaug:
+  _target_: emg2qwerty.transforms.SpecAugment
+  n_time_masks: 3
+  time_mask_param: 25
+  n_freq_masks: 2
+  freq_mask_param: 4
+transforms:
+  train:
+  - ${to_tensor}
+  - ${band_rotation}
+  - ${temporal_jitter}
+  - ${logspec}
+  - ${specaug}
+  val:
+  - ${to_tensor}
+  - ${logspec}
+  test: ${transforms.val}
+module:
+  _target_: emg2qwerty.lightning.TCNCTCModule
+  in_features: 528
+  mlp_features:
+  - 384
+  block_channels:
+  - 24
+  - 24
+  - 24
+  - 24
+  kernel_width: 32
+datamodule:
+  _target_: emg2qwerty.lightning.WindowedEMGDataModule
+  window_length: 8000
+  padding:
+  - 1800
+  - 200
+optimizer:
+  _target_: torch.optim.Adam
+  lr: 0.001
+lr_scheduler:
+  scheduler:
+    _target_: pl_bolts.optimizers.lr_scheduler.LinearWarmupCosineAnnealingLR
+    warmup_epochs: 10
+    max_epochs: ${trainer.max_epochs}
+    warmup_start_lr: 1.0e-08
+    eta_min: 1.0e-06
+  interval: epoch
+decoder:
+  _target_: emg2qwerty.decoder.CTCGreedyDecoder
+seed: 1501
+batch_size: 32
+num_workers: 4
+train: true
+checkpoint: null
+monitor_metric: val/CER
+monitor_mode: min
+trainer:
+  accelerator: gpu
+  devices: 1
+  num_nodes: 1
+  max_epochs: 20
+  gradient_clip_val: 1.0
+  default_root_dir: ${hydra:runtime.output_dir}
+callbacks:
+- _target_: pytorch_lightning.callbacks.LearningRateMonitor
+- _target_: pytorch_lightning.callbacks.ModelCheckpoint
+  dirpath: ${hydra:runtime.output_dir}/checkpoints
+  monitor: ${monitor_metric}
+  mode: ${monitor_mode}
+  save_last: true
+  verbose: true
+
+Global seed set to 1501
+[2026-03-11 10:08:57,425][__main__][INFO] - Instantiating LightningModule {'_target_': 'emg2qwerty.lightning.TCNCTCModule', 'in_features': 528, 'mlp_features': [384], 'block_channels': [24, 24, 24, 24], 'kernel_width': 32}
+/usr/local/lib/python3.12/dist-packages/torch/nn/utils/weight_norm.py:28: UserWarning: torch.nn.utils.weight_norm is deprecated in favor of torch.nn.utils.parametrizations.weight_norm.
+  warnings.warn("torch.nn.utils.weight_norm is deprecated in favor of torch.nn.utils.parametrizations.weight_norm.")
+[2026-03-11 10:08:59,500][__main__][INFO] - Instantiating LightningDataModule {'_target_': 'emg2qwerty.lightning.WindowedEMGDataModule', 'window_length': 8000, 'padding': [1800, 200]}
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+Missing logger folder: /content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/lightning_logs
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+/usr/local/lib/python3.12/dist-packages/pl_bolts/__init__.py:11: FutureWarning: In the future `np.object` will be defined as the corresponding NumPy scalar.
+  if not hasattr(numpy, tp_name):
+/usr/local/lib/python3.12/dist-packages/pl_bolts/__init__.py:11: FutureWarning: In the future `np.bool` will be defined as the corresponding NumPy scalar.
+  if not hasattr(numpy, tp_name):
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+/usr/local/lib/python3.12/dist-packages/matplotlib/_fontconfig_pattern.py:64: PyparsingDeprecationWarning: 'oneOf' deprecated - use 'one_of'
+  prop = Group((name + Suppress("=") + comma_separated(value)) | oneOf(_CONSTANTS))
+/usr/local/lib/python3.12/dist-packages/matplotlib/_fontconfig_pattern.py:85: PyparsingDeprecationWarning: 'parseString' deprecated - use 'parse_string'
+  parse = parser.parseString(pattern)
+/usr/local/lib/python3.12/dist-packages/matplotlib/_fontconfig_pattern.py:89: PyparsingDeprecationWarning: 'resetCache' deprecated - use 'reset_cache'
+  parser.resetCache()
+/usr/local/lib/python3.12/dist-packages/pl_bolts/models/self_supervised/amdim/amdim_module.py:34: UnderReviewWarning: The feature generate_power_seq is currently marked under review. The compatibility with other Lightning projects is not guaranteed and API may change at any time. The API and functionality may change without warning in future releases. More details: https://lightning-bolts.readthedocs.io/en/latest/stability.html
+  "lr_options": generate_power_seq(LEARNING_RATE_CIFAR, 11),
+/usr/local/lib/python3.12/dist-packages/pl_bolts/models/self_supervised/amdim/amdim_module.py:92: UnderReviewWarning: The feature FeatureMapContrastiveTask is currently marked under review. The compatibility with other Lightning projects is not guaranteed and API may change at any time. The API and functionality may change without warning in future releases. More details: https://lightning-bolts.readthedocs.io/en/latest/stability.html
+  contrastive_task: Union[FeatureMapContrastiveTask] = FeatureMapContrastiveTask("01, 02, 11"),
+/usr/local/lib/python3.12/dist-packages/pl_bolts/losses/self_supervised_learning.py:228: UnderReviewWarning: The feature AmdimNCELoss is currently marked under review. The compatibility with other Lightning projects is not guaranteed and API may change at any time. The API and functionality may change without warning in future releases. More details: https://lightning-bolts.readthedocs.io/en/latest/stability.html
+  self.nce_loss = AmdimNCELoss(tclip)
+/usr/local/lib/python3.12/dist-packages/matplotlib/_mathtext.py:45: PyparsingDeprecationWarning: 'enablePackrat' deprecated - use 'enable_packrat'
+  ParserElement.enablePackrat()
+[2026-03-11 10:09:00,761][matplotlib.style.core][WARNING] - In /usr/local/lib/python3.12/dist-packages/matplotlib/mpl-data/stylelib/classic.mplstyle: 'parseString' deprecated - use 'parse_string'
+[2026-03-11 10:09:00,761][matplotlib.style.core][WARNING] - In /usr/local/lib/python3.12/dist-packages/matplotlib/mpl-data/stylelib/classic.mplstyle: 'resetCache' deprecated - use 'reset_cache'
+/usr/local/lib/python3.12/dist-packages/hydra/_internal/instantiate/_instantiate2.py:92: UnderReviewWarning: The feature LinearWarmupCosineAnnealingLR is currently marked under review. The compatibility with other Lightning projects is not guaranteed and API may change at any time. The API and functionality may change without warning in future releases. More details: https://lightning-bolts.readthedocs.io/en/latest/stability.html
+  return _target_(*args, **kwargs)
+
+  | Name     | Type       | Params
+----------------------------------------
+0 | model    | Sequential | 6.5 M 
+1 | ctc_loss | CTCLoss    | 0     
+2 | metrics  | ModuleDict | 0     
+----------------------------------------
+6.5 M     Trainable params
+0         Non-trainable params
+6.5 M     Total params
+26.157    Total estimated model params size (MB)
+Sanity Checking: 0it [00:00, ?it/s]/usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=74593) is multi-threaded, use of fork() may lead to deadlocks in the child.
+  self.pid = os.fork()
+Sanity Checking DataLoader 0:   0% 0/2 [00:00<?, ?it/s]/usr/local/lib/python3.12/dist-packages/torch/nn/modules/conv.py:306: UserWarning: Plan failed with a cudnnException: CUDNN_BACKEND_EXECUTION_PLAN_DESCRIPTOR: cudnnFinalize Descriptor Failed cudnn_status: CUDNN_STATUS_NOT_SUPPORTED (Triggered internally at ../aten/src/ATen/native/cudnn/Conv_v8.cpp:919.)
+  return F.conv1d(input, weight, bias, self.stride,
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Epoch 0:   0% 0/127 [00:00<?, ?it/s] Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Epoch 0:  16% 20/127 [00:05<00:31,  3.37it/s, loss=150, v_num=0]Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Epoch 0:  31% 40/127 [00:10<00:22,  3.91it/s, loss=157, v_num=0]Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Epoch 0:  47% 60/127 [00:14<00:16,  4.16it/s, loss=142, v_num=0]Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Epoch 0:  63% 80/127 [00:18<00:10,  4.32it/s, loss=167, v_num=0]Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Epoch 0:  79% 100/127 [00:22<00:06,  4.40it/s, loss=152, v_num=0]Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Epoch 0:  94% 120/127 [00:26<00:01,  4.47it/s, loss=171, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+
+Epoch 0: 100% 127/127 [00:28<00:00,  4.47it/s, loss=171, v_num=0]
+Epoch 0: 100% 127/127 [00:28<00:00,  4.47it/s, loss=171, v_num=0]Epoch 0, global step 120: 'val/CER' reached 1419.40625 (best 1419.40625), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=0-step=120.ckpt' as top 1
+Epoch 1:   0% 0/127 [00:00<?, ?it/s, loss=171, v_num=0]Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.00%
+Blank class: 98, argmax blank%: 0.11%
+Blank class: 98, argmax blank%: 0.14%
+Blank class: 98, argmax blank%: 0.31%
+Blank class: 98, argmax blank%: 0.66%
+Blank class: 98, argmax blank%: 6.48%
+Blank class: 98, argmax blank%: 41.87%
+Blank class: 98, argmax blank%: 85.93%
+Blank class: 98, argmax blank%: 98.45%
+Blank class: 98, argmax blank%: 99.80%
+Blank class: 98, argmax blank%: 99.89%
+Epoch 1:  16% 20/127 [00:04<00:24,  4.30it/s, loss=91, v_num=0] Blank class: 98, argmax blank%: 99.76%
+Blank class: 98, argmax blank%: 99.47%
+Blank class: 98, argmax blank%: 98.69%
+Blank class: 98, argmax blank%: 97.74%
+Blank class: 98, argmax blank%: 97.11%
+Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 97.21%
+Blank class: 98, argmax blank%: 97.65%
+Blank class: 98, argmax blank%: 98.25%
+Blank class: 98, argmax blank%: 98.71%
+Blank class: 98, argmax blank%: 99.04%
+Blank class: 98, argmax blank%: 98.92%
+Blank class: 98, argmax blank%: 98.48%
+Blank class: 98, argmax blank%: 98.29%
+Blank class: 98, argmax blank%: 98.50%
+Blank class: 98, argmax blank%: 98.74%
+Blank class: 98, argmax blank%: 99.25%
+Blank class: 98, argmax blank%: 99.84%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Epoch 1:  31% 40/127 [00:08<00:18,  4.73it/s, loss=3.96, v_num=0]Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.79%
+Blank class: 98, argmax blank%: 99.75%
+Blank class: 98, argmax blank%: 99.72%
+Blank class: 98, argmax blank%: 99.85%
+Blank class: 98, argmax blank%: 99.94%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.98%
+Blank class: 98, argmax blank%: 99.94%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 99.94%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Epoch 1:  47% 60/127 [00:12<00:13,  4.83it/s, loss=3.48, v_num=0]Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.98%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.98%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.98%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 1:  63% 80/127 [00:16<00:09,  4.93it/s, loss=3.37, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.98%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 1:  79% 100/127 [00:20<00:05,  4.91it/s, loss=3.59, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 1:  94% 120/127 [00:24<00:01,  4.98it/s, loss=3.57, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+
+Epoch 1: 100% 127/127 [00:25<00:00,  4.96it/s, loss=3.57, v_num=0]
+Epoch 1: 100% 127/127 [00:25<00:00,  4.96it/s, loss=3.57, v_num=0]Epoch 1, global step 240: 'val/CER' reached 100.00000 (best 100.00000), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=1-step=240.ckpt' as top 1
+Epoch 2:   0% 0/127 [00:00<?, ?it/s, loss=3.57, v_num=0]Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 2:  16% 20/127 [00:04<00:23,  4.48it/s, loss=3.44, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 2:  31% 40/127 [00:08<00:18,  4.78it/s, loss=3.49, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 2:  47% 60/127 [00:13<00:15,  4.34it/s, loss=3.35, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 2:  63% 80/127 [00:17<00:10,  4.49it/s, loss=3.41, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 2:  79% 100/127 [00:21<00:05,  4.63it/s, loss=3.51, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 2:  94% 120/127 [00:25<00:01,  4.75it/s, loss=3.34, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+
+Epoch 2: 100% 127/127 [00:26<00:00,  4.76it/s, loss=3.34, v_num=0]
+Epoch 2: 100% 127/127 [00:26<00:00,  4.76it/s, loss=3.34, v_num=0]Epoch 2, global step 360: 'val/CER' was not in top 1
+Epoch 3:   0% 0/127 [00:00<?, ?it/s, loss=3.34, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 3:  16% 20/127 [00:04<00:23,  4.47it/s, loss=3.59, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 3:  31% 40/127 [00:08<00:17,  4.86it/s, loss=3.4, v_num=0] Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 3:  47% 60/127 [00:13<00:14,  4.50it/s, loss=3.39, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 3:  63% 80/127 [00:17<00:10,  4.61it/s, loss=3.33, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 3:  79% 100/127 [00:21<00:05,  4.74it/s, loss=3.32, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 3:  94% 120/127 [00:24<00:01,  4.84it/s, loss=3.26, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+
+Epoch 3: 100% 127/127 [00:26<00:00,  4.85it/s, loss=3.26, v_num=0]
+Epoch 3: 100% 127/127 [00:26<00:00,  4.85it/s, loss=3.26, v_num=0]Epoch 3, global step 480: 'val/CER' was not in top 1
+Epoch 4:   0% 0/127 [00:00<?, ?it/s, loss=3.26, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 4:  16% 20/127 [00:04<00:25,  4.28it/s, loss=3.23, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 4:  31% 40/127 [00:08<00:18,  4.69it/s, loss=3.25, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 4:  47% 60/127 [00:12<00:13,  4.86it/s, loss=3.18, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 4:  63% 80/127 [00:16<00:09,  4.90it/s, loss=3.13, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 4:  79% 100/127 [00:20<00:05,  4.99it/s, loss=3.19, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 4:  94% 120/127 [00:23<00:01,  5.06it/s, loss=3.08, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+
+Epoch 4: 100% 127/127 [00:25<00:00,  5.06it/s, loss=3.08, v_num=0]
+Epoch 4: 100% 127/127 [00:25<00:00,  5.06it/s, loss=3.08, v_num=0]Epoch 4, global step 600: 'val/CER' was not in top 1
+Epoch 5:   0% 0/127 [00:00<?, ?it/s, loss=3.08, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 5:  16% 20/127 [00:04<00:24,  4.44it/s, loss=3.21, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Epoch 5:  31% 40/127 [00:08<00:18,  4.81it/s, loss=2.99, v_num=0]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.98%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.99%
+Epoch 5:  47% 60/127 [00:12<00:13,  4.91it/s, loss=2.95, v_num=0]Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.98%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.96%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.93%
+Blank class: 98, argmax blank%: 99.92%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.98%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.97%
+Epoch 5:  63% 80/127 [00:15<00:09,  5.03it/s, loss=2.9, v_num=0] Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.96%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.93%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 99.98%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 99.93%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.93%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.96%
+Blank class: 98, argmax blank%: 99.90%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 99.94%
+Blank class: 98, argmax blank%: 99.98%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 99.96%
+Blank class: 98, argmax blank%: 99.99%
+Epoch 5:  79% 100/127 [00:19<00:05,  5.06it/s, loss=2.88, v_num=0]Blank class: 98, argmax blank%: 99.94%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.96%
+Blank class: 98, argmax blank%: 99.92%
+Blank class: 98, argmax blank%: 99.90%
+Blank class: 98, argmax blank%: 99.91%
+Blank class: 98, argmax blank%: 99.93%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 99.88%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 99.86%
+Blank class: 98, argmax blank%: 99.94%
+Blank class: 98, argmax blank%: 99.94%
+Blank class: 98, argmax blank%: 99.93%
+Blank class: 98, argmax blank%: 99.92%
+Blank class: 98, argmax blank%: 99.90%
+Blank class: 98, argmax blank%: 99.83%
+Blank class: 98, argmax blank%: 99.87%
+Blank class: 98, argmax blank%: 99.97%
+Epoch 5:  94% 120/127 [00:23<00:01,  5.12it/s, loss=2.86, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 100.00%
+Blank class: 98, argmax blank%: 99.97%
+Blank class: 98, argmax blank%: 99.99%
+Blank class: 98, argmax blank%: 99.98%
+
+Epoch 5: 100% 127/127 [00:24<00:00,  5.12it/s, loss=2.86, v_num=0]
+Epoch 5: 100% 127/127 [00:24<00:00,  5.12it/s, loss=2.86, v_num=0]Epoch 5, global step 720: 'val/CER' reached 99.88924 (best 99.88924), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=5-step=720.ckpt' as top 1
+Epoch 6:   0% 0/127 [00:00<?, ?it/s, loss=2.86, v_num=0]Blank class: 98, argmax blank%: 99.92%
+Blank class: 98, argmax blank%: 99.83%
+Blank class: 98, argmax blank%: 99.87%
+Blank class: 98, argmax blank%: 99.89%
+Blank class: 98, argmax blank%: 99.89%
+Blank class: 98, argmax blank%: 99.90%
+Blank class: 98, argmax blank%: 99.88%
+Blank class: 98, argmax blank%: 99.91%
+Blank class: 98, argmax blank%: 99.92%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 99.89%
+Blank class: 98, argmax blank%: 99.91%
+Blank class: 98, argmax blank%: 99.67%
+Blank class: 98, argmax blank%: 99.39%
+Blank class: 98, argmax blank%: 99.63%
+Blank class: 98, argmax blank%: 99.61%
+Blank class: 98, argmax blank%: 99.81%
+Blank class: 98, argmax blank%: 99.92%
+Blank class: 98, argmax blank%: 99.89%
+Epoch 6:  16% 20/127 [00:04<00:24,  4.41it/s, loss=2.86, v_num=0]Blank class: 98, argmax blank%: 99.85%
+Blank class: 98, argmax blank%: 99.83%
+Blank class: 98, argmax blank%: 99.78%
+Blank class: 98, argmax blank%: 99.72%
+Blank class: 98, argmax blank%: 99.89%
+Blank class: 98, argmax blank%: 99.90%
+Blank class: 98, argmax blank%: 99.94%
+Blank class: 98, argmax blank%: 99.90%
+Blank class: 98, argmax blank%: 99.83%
+Blank class: 98, argmax blank%: 99.77%
+Blank class: 98, argmax blank%: 99.80%
+Blank class: 98, argmax blank%: 99.91%
+Blank class: 98, argmax blank%: 99.92%
+Blank class: 98, argmax blank%: 99.95%
+Blank class: 98, argmax blank%: 99.82%
+Blank class: 98, argmax blank%: 99.65%
+Blank class: 98, argmax blank%: 99.67%
+Blank class: 98, argmax blank%: 99.82%
+Blank class: 98, argmax blank%: 99.87%
+Blank class: 98, argmax blank%: 99.93%
+Epoch 6:  31% 40/127 [00:08<00:18,  4.75it/s, loss=2.75, v_num=0]Blank class: 98, argmax blank%: 99.89%
+Blank class: 98, argmax blank%: 99.77%
+Blank class: 98, argmax blank%: 99.71%
+Blank class: 98, argmax blank%: 99.70%
+Blank class: 98, argmax blank%: 99.74%
+Blank class: 98, argmax blank%: 99.70%
+Blank class: 98, argmax blank%: 99.85%
+Blank class: 98, argmax blank%: 99.64%
+Blank class: 98, argmax blank%: 99.56%
+Blank class: 98, argmax blank%: 99.53%
+Blank class: 98, argmax blank%: 99.62%
+Blank class: 98, argmax blank%: 99.59%
+Blank class: 98, argmax blank%: 99.54%
+Blank class: 98, argmax blank%: 99.60%
+Blank class: 98, argmax blank%: 99.51%
+Blank class: 98, argmax blank%: 99.49%
+Blank class: 98, argmax blank%: 99.69%
+Blank class: 98, argmax blank%: 99.78%
+Blank class: 98, argmax blank%: 99.78%
+Blank class: 98, argmax blank%: 99.69%
+Epoch 6:  47% 60/127 [00:12<00:13,  4.86it/s, loss=2.68, v_num=0]Blank class: 98, argmax blank%: 99.63%
+Blank class: 98, argmax blank%: 99.48%
+Blank class: 98, argmax blank%: 99.34%
+Blank class: 98, argmax blank%: 99.35%
+Blank class: 98, argmax blank%: 99.43%
+Blank class: 98, argmax blank%: 99.53%
+Blank class: 98, argmax blank%: 99.41%
+Blank class: 98, argmax blank%: 99.51%
+Blank class: 98, argmax blank%: 99.50%
+Blank class: 98, argmax blank%: 99.48%
+Blank class: 98, argmax blank%: 99.34%
+Blank class: 98, argmax blank%: 99.52%
+Blank class: 98, argmax blank%: 99.26%
+Blank class: 98, argmax blank%: 99.38%
+Blank class: 98, argmax blank%: 99.37%
+Blank class: 98, argmax blank%: 99.62%
+Blank class: 98, argmax blank%: 99.67%
+Blank class: 98, argmax blank%: 99.59%
+Blank class: 98, argmax blank%: 99.48%
+Blank class: 98, argmax blank%: 99.66%
+Epoch 6:  63% 80/127 [00:16<00:09,  4.97it/s, loss=2.71, v_num=0]Blank class: 98, argmax blank%: 99.53%
+Blank class: 98, argmax blank%: 99.45%
+Blank class: 98, argmax blank%: 99.44%
+Blank class: 98, argmax blank%: 99.47%
+Blank class: 98, argmax blank%: 99.46%
+Blank class: 98, argmax blank%: 99.28%
+Blank class: 98, argmax blank%: 99.26%
+Blank class: 98, argmax blank%: 99.46%
+Blank class: 98, argmax blank%: 99.39%
+Blank class: 98, argmax blank%: 99.38%
+Blank class: 98, argmax blank%: 99.42%
+Blank class: 98, argmax blank%: 99.50%
+Blank class: 98, argmax blank%: 99.25%
+Blank class: 98, argmax blank%: 99.30%
+Blank class: 98, argmax blank%: 99.30%
+Blank class: 98, argmax blank%: 99.32%
+Blank class: 98, argmax blank%: 99.33%
+Blank class: 98, argmax blank%: 98.99%
+Blank class: 98, argmax blank%: 99.30%
+Blank class: 98, argmax blank%: 99.63%
+Epoch 6:  79% 100/127 [00:20<00:05,  5.00it/s, loss=2.58, v_num=0]Blank class: 98, argmax blank%: 99.74%
+Blank class: 98, argmax blank%: 99.77%
+Blank class: 98, argmax blank%: 99.69%
+Blank class: 98, argmax blank%: 99.33%
+Blank class: 98, argmax blank%: 99.14%
+Blank class: 98, argmax blank%: 99.16%
+Blank class: 98, argmax blank%: 99.33%
+Blank class: 98, argmax blank%: 99.36%
+Blank class: 98, argmax blank%: 99.46%
+Blank class: 98, argmax blank%: 99.45%
+Blank class: 98, argmax blank%: 99.50%
+Blank class: 98, argmax blank%: 99.18%
+Blank class: 98, argmax blank%: 99.43%
+Blank class: 98, argmax blank%: 99.55%
+Blank class: 98, argmax blank%: 99.44%
+Blank class: 98, argmax blank%: 99.11%
+Blank class: 98, argmax blank%: 98.87%
+Blank class: 98, argmax blank%: 98.81%
+Blank class: 98, argmax blank%: 99.17%
+Blank class: 98, argmax blank%: 99.41%
+Epoch 6:  94% 120/127 [00:23<00:01,  5.05it/s, loss=2.57, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 99.58%
+Blank class: 98, argmax blank%: 99.48%
+Blank class: 98, argmax blank%: 99.57%
+Blank class: 98, argmax blank%: 99.50%
+Blank class: 98, argmax blank%: 99.21%
+Blank class: 98, argmax blank%: 99.26%
+Blank class: 98, argmax blank%: 99.14%
+
+Epoch 6: 100% 127/127 [00:25<00:00,  5.05it/s, loss=2.57, v_num=0]
+Epoch 6: 100% 127/127 [00:25<00:00,  5.05it/s, loss=2.57, v_num=0]Epoch 6, global step 840: 'val/CER' reached 90.98360 (best 90.98360), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=6-step=840.ckpt' as top 1
+Epoch 7:   0% 0/127 [00:00<?, ?it/s, loss=2.57, v_num=0]Blank class: 98, argmax blank%: 99.26%
+Blank class: 98, argmax blank%: 99.20%
+Blank class: 98, argmax blank%: 99.13%
+Blank class: 98, argmax blank%: 99.03%
+Blank class: 98, argmax blank%: 99.16%
+Blank class: 98, argmax blank%: 99.49%
+Blank class: 98, argmax blank%: 99.39%
+Blank class: 98, argmax blank%: 99.35%
+Blank class: 98, argmax blank%: 99.09%
+Blank class: 98, argmax blank%: 99.08%
+Blank class: 98, argmax blank%: 99.36%
+Blank class: 98, argmax blank%: 99.51%
+Blank class: 98, argmax blank%: 99.42%
+Blank class: 98, argmax blank%: 99.16%
+Blank class: 98, argmax blank%: 99.38%
+Blank class: 98, argmax blank%: 99.25%
+Blank class: 98, argmax blank%: 99.27%
+Blank class: 98, argmax blank%: 99.08%
+Blank class: 98, argmax blank%: 99.12%
+Blank class: 98, argmax blank%: 99.40%
+Epoch 7:  16% 20/127 [00:04<00:24,  4.44it/s, loss=2.43, v_num=0]Blank class: 98, argmax blank%: 99.30%
+Blank class: 98, argmax blank%: 99.18%
+Blank class: 98, argmax blank%: 99.17%
+Blank class: 98, argmax blank%: 99.07%
+Blank class: 98, argmax blank%: 99.38%
+Blank class: 98, argmax blank%: 99.38%
+Blank class: 98, argmax blank%: 99.42%
+Blank class: 98, argmax blank%: 99.13%
+Blank class: 98, argmax blank%: 99.02%
+Blank class: 98, argmax blank%: 99.12%
+Blank class: 98, argmax blank%: 99.30%
+Blank class: 98, argmax blank%: 99.40%
+Blank class: 98, argmax blank%: 99.31%
+Blank class: 98, argmax blank%: 99.19%
+Blank class: 98, argmax blank%: 98.92%
+Blank class: 98, argmax blank%: 99.11%
+Blank class: 98, argmax blank%: 99.30%
+Blank class: 98, argmax blank%: 99.18%
+Blank class: 98, argmax blank%: 99.19%
+Blank class: 98, argmax blank%: 98.88%
+Epoch 7:  31% 40/127 [00:08<00:18,  4.72it/s, loss=2.41, v_num=0]Blank class: 98, argmax blank%: 99.17%
+Blank class: 98, argmax blank%: 99.45%
+Blank class: 98, argmax blank%: 99.59%
+Blank class: 98, argmax blank%: 99.63%
+Blank class: 98, argmax blank%: 99.52%
+Blank class: 98, argmax blank%: 99.28%
+Blank class: 98, argmax blank%: 99.08%
+Blank class: 98, argmax blank%: 98.86%
+Blank class: 98, argmax blank%: 98.87%
+Blank class: 98, argmax blank%: 98.79%
+Blank class: 98, argmax blank%: 99.40%
+Blank class: 98, argmax blank%: 99.45%
+Blank class: 98, argmax blank%: 99.30%
+Blank class: 98, argmax blank%: 99.39%
+Blank class: 98, argmax blank%: 99.10%
+Blank class: 98, argmax blank%: 99.04%
+Blank class: 98, argmax blank%: 99.18%
+Blank class: 98, argmax blank%: 98.97%
+Blank class: 98, argmax blank%: 99.39%
+Blank class: 98, argmax blank%: 99.42%
+Epoch 7:  47% 60/127 [00:12<00:13,  4.88it/s, loss=2.48, v_num=0]Blank class: 98, argmax blank%: 99.41%
+Blank class: 98, argmax blank%: 99.43%
+Blank class: 98, argmax blank%: 99.38%
+Blank class: 98, argmax blank%: 99.29%
+Blank class: 98, argmax blank%: 98.98%
+Blank class: 98, argmax blank%: 98.88%
+Blank class: 98, argmax blank%: 98.94%
+Blank class: 98, argmax blank%: 99.18%
+Blank class: 98, argmax blank%: 99.39%
+Blank class: 98, argmax blank%: 99.49%
+Blank class: 98, argmax blank%: 99.23%
+Blank class: 98, argmax blank%: 99.11%
+Blank class: 98, argmax blank%: 99.09%
+Blank class: 98, argmax blank%: 99.15%
+Blank class: 98, argmax blank%: 99.17%
+Blank class: 98, argmax blank%: 99.24%
+Blank class: 98, argmax blank%: 99.27%
+Blank class: 98, argmax blank%: 99.02%
+Blank class: 98, argmax blank%: 98.89%
+Blank class: 98, argmax blank%: 99.02%
+Epoch 7:  63% 80/127 [00:16<00:09,  4.96it/s, loss=2.36, v_num=0]Blank class: 98, argmax blank%: 99.06%
+Blank class: 98, argmax blank%: 99.14%
+Blank class: 98, argmax blank%: 99.07%
+Blank class: 98, argmax blank%: 99.14%
+Blank class: 98, argmax blank%: 99.28%
+Blank class: 98, argmax blank%: 99.09%
+Blank class: 98, argmax blank%: 99.12%
+Blank class: 98, argmax blank%: 99.20%
+Blank class: 98, argmax blank%: 99.07%
+Blank class: 98, argmax blank%: 99.05%
+Blank class: 98, argmax blank%: 98.98%
+Blank class: 98, argmax blank%: 99.01%
+Blank class: 98, argmax blank%: 99.05%
+Blank class: 98, argmax blank%: 99.08%
+Blank class: 98, argmax blank%: 98.96%
+Blank class: 98, argmax blank%: 99.16%
+Blank class: 98, argmax blank%: 99.22%
+Blank class: 98, argmax blank%: 99.46%
+Blank class: 98, argmax blank%: 99.31%
+Blank class: 98, argmax blank%: 98.79%
+Epoch 7:  79% 100/127 [00:20<00:05,  4.99it/s, loss=2.27, v_num=0]Blank class: 98, argmax blank%: 98.84%
+Blank class: 98, argmax blank%: 98.73%
+Blank class: 98, argmax blank%: 99.18%
+Blank class: 98, argmax blank%: 99.16%
+Blank class: 98, argmax blank%: 99.26%
+Blank class: 98, argmax blank%: 99.05%
+Blank class: 98, argmax blank%: 99.01%
+Blank class: 98, argmax blank%: 99.21%
+Blank class: 98, argmax blank%: 99.29%
+Blank class: 98, argmax blank%: 99.17%
+Blank class: 98, argmax blank%: 98.74%
+Blank class: 98, argmax blank%: 98.77%
+Blank class: 98, argmax blank%: 98.92%
+Blank class: 98, argmax blank%: 99.14%
+Blank class: 98, argmax blank%: 99.34%
+Blank class: 98, argmax blank%: 99.44%
+Blank class: 98, argmax blank%: 99.32%
+Blank class: 98, argmax blank%: 99.03%
+Blank class: 98, argmax blank%: 98.83%
+Blank class: 98, argmax blank%: 98.58%
+Epoch 7:  94% 120/127 [00:23<00:01,  5.05it/s, loss=2.32, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 98.99%
+Blank class: 98, argmax blank%: 98.92%
+Blank class: 98, argmax blank%: 99.16%
+Blank class: 98, argmax blank%: 98.85%
+Blank class: 98, argmax blank%: 98.60%
+Blank class: 98, argmax blank%: 98.58%
+Blank class: 98, argmax blank%: 98.41%
+
+Epoch 7: 100% 127/127 [00:25<00:00,  5.04it/s, loss=2.32, v_num=0]
+Epoch 7: 100% 127/127 [00:25<00:00,  5.04it/s, loss=2.32, v_num=0]Epoch 7, global step 960: 'val/CER' reached 84.75853 (best 84.75853), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=7-step=960.ckpt' as top 1
+Epoch 8:   0% 0/127 [00:00<?, ?it/s, loss=2.32, v_num=0]Blank class: 98, argmax blank%: 98.50%
+Blank class: 98, argmax blank%: 99.11%
+Blank class: 98, argmax blank%: 99.27%
+Blank class: 98, argmax blank%: 99.09%
+Blank class: 98, argmax blank%: 98.85%
+Blank class: 98, argmax blank%: 99.06%
+Blank class: 98, argmax blank%: 98.97%
+Blank class: 98, argmax blank%: 99.06%
+Blank class: 98, argmax blank%: 99.15%
+Blank class: 98, argmax blank%: 99.19%
+Blank class: 98, argmax blank%: 99.02%
+Blank class: 98, argmax blank%: 99.04%
+Blank class: 98, argmax blank%: 99.13%
+Blank class: 98, argmax blank%: 99.35%
+Blank class: 98, argmax blank%: 99.24%
+Blank class: 98, argmax blank%: 99.32%
+Blank class: 98, argmax blank%: 99.11%
+Blank class: 98, argmax blank%: 98.84%
+Blank class: 98, argmax blank%: 98.90%
+Blank class: 98, argmax blank%: 98.90%
+Epoch 8:  16% 20/127 [00:04<00:24,  4.44it/s, loss=2.26, v_num=0]Blank class: 98, argmax blank%: 98.86%
+Blank class: 98, argmax blank%: 98.88%
+Blank class: 98, argmax blank%: 98.87%
+Blank class: 98, argmax blank%: 99.20%
+Blank class: 98, argmax blank%: 98.89%
+Blank class: 98, argmax blank%: 98.93%
+Blank class: 98, argmax blank%: 99.07%
+Blank class: 98, argmax blank%: 99.16%
+Blank class: 98, argmax blank%: 99.29%
+Blank class: 98, argmax blank%: 98.99%
+Blank class: 98, argmax blank%: 98.73%
+Blank class: 98, argmax blank%: 99.14%
+Blank class: 98, argmax blank%: 99.10%
+Blank class: 98, argmax blank%: 99.16%
+Blank class: 98, argmax blank%: 99.23%
+Blank class: 98, argmax blank%: 99.04%
+Blank class: 98, argmax blank%: 98.99%
+Blank class: 98, argmax blank%: 98.93%
+Blank class: 98, argmax blank%: 98.99%
+Blank class: 98, argmax blank%: 99.02%
+Epoch 8:  31% 40/127 [00:08<00:18,  4.75it/s, loss=2.22, v_num=0]Blank class: 98, argmax blank%: 99.15%
+Blank class: 98, argmax blank%: 99.23%
+Blank class: 98, argmax blank%: 99.03%
+Blank class: 98, argmax blank%: 98.81%
+Blank class: 98, argmax blank%: 98.81%
+Blank class: 98, argmax blank%: 98.75%
+Blank class: 98, argmax blank%: 99.21%
+Blank class: 98, argmax blank%: 99.33%
+Blank class: 98, argmax blank%: 99.18%
+Blank class: 98, argmax blank%: 99.18%
+Blank class: 98, argmax blank%: 98.99%
+Blank class: 98, argmax blank%: 99.13%
+Blank class: 98, argmax blank%: 98.96%
+Blank class: 98, argmax blank%: 99.31%
+Blank class: 98, argmax blank%: 99.10%
+Blank class: 98, argmax blank%: 98.68%
+Blank class: 98, argmax blank%: 98.91%
+Blank class: 98, argmax blank%: 98.72%
+Blank class: 98, argmax blank%: 99.02%
+Blank class: 98, argmax blank%: 99.31%
+Epoch 8:  47% 60/127 [00:12<00:13,  4.88it/s, loss=2.26, v_num=0]Blank class: 98, argmax blank%: 99.18%
+Blank class: 98, argmax blank%: 99.32%
+Blank class: 98, argmax blank%: 99.00%
+Blank class: 98, argmax blank%: 98.79%
+Blank class: 98, argmax blank%: 98.83%
+Blank class: 98, argmax blank%: 98.59%
+Blank class: 98, argmax blank%: 98.82%
+Blank class: 98, argmax blank%: 99.01%
+Blank class: 98, argmax blank%: 99.14%
+Blank class: 98, argmax blank%: 99.39%
+Blank class: 98, argmax blank%: 99.11%
+Blank class: 98, argmax blank%: 98.88%
+Blank class: 98, argmax blank%: 98.75%
+Blank class: 98, argmax blank%: 98.67%
+Blank class: 98, argmax blank%: 98.71%
+Blank class: 98, argmax blank%: 99.10%
+Blank class: 98, argmax blank%: 99.06%
+Blank class: 98, argmax blank%: 99.23%
+Blank class: 98, argmax blank%: 98.93%
+Blank class: 98, argmax blank%: 99.18%
+Epoch 8:  63% 80/127 [00:16<00:09,  4.95it/s, loss=2.27, v_num=0]Blank class: 98, argmax blank%: 98.84%
+Blank class: 98, argmax blank%: 99.08%
+Blank class: 98, argmax blank%: 99.12%
+Blank class: 98, argmax blank%: 99.13%
+Blank class: 98, argmax blank%: 99.33%
+Blank class: 98, argmax blank%: 98.99%
+Blank class: 98, argmax blank%: 98.88%
+Blank class: 98, argmax blank%: 98.67%
+Blank class: 98, argmax blank%: 98.88%
+Blank class: 98, argmax blank%: 98.73%
+Blank class: 98, argmax blank%: 98.80%
+Blank class: 98, argmax blank%: 98.82%
+Blank class: 98, argmax blank%: 98.88%
+Blank class: 98, argmax blank%: 99.15%
+Blank class: 98, argmax blank%: 98.93%
+Blank class: 98, argmax blank%: 98.98%
+Blank class: 98, argmax blank%: 99.19%
+Blank class: 98, argmax blank%: 99.14%
+Blank class: 98, argmax blank%: 98.89%
+Blank class: 98, argmax blank%: 98.95%
+Epoch 8:  79% 100/127 [00:20<00:05,  4.95it/s, loss=2.16, v_num=0]Blank class: 98, argmax blank%: 99.03%
+Blank class: 98, argmax blank%: 98.83%
+Blank class: 98, argmax blank%: 98.85%
+Blank class: 98, argmax blank%: 98.78%
+Blank class: 98, argmax blank%: 98.96%
+Blank class: 98, argmax blank%: 98.81%
+Blank class: 98, argmax blank%: 99.05%
+Blank class: 98, argmax blank%: 98.73%
+Blank class: 98, argmax blank%: 98.82%
+Blank class: 98, argmax blank%: 98.86%
+Blank class: 98, argmax blank%: 98.93%
+Blank class: 98, argmax blank%: 98.98%
+Blank class: 98, argmax blank%: 98.67%
+Blank class: 98, argmax blank%: 98.75%
+Blank class: 98, argmax blank%: 98.80%
+Blank class: 98, argmax blank%: 98.78%
+Blank class: 98, argmax blank%: 98.65%
+Blank class: 98, argmax blank%: 98.59%
+Blank class: 98, argmax blank%: 98.97%
+Blank class: 98, argmax blank%: 98.69%
+Epoch 8:  94% 120/127 [00:24<00:01,  4.98it/s, loss=2.07, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 99.07%
+Blank class: 98, argmax blank%: 99.01%
+Blank class: 98, argmax blank%: 99.09%
+Blank class: 98, argmax blank%: 99.01%
+Blank class: 98, argmax blank%: 98.76%
+Blank class: 98, argmax blank%: 98.53%
+Blank class: 98, argmax blank%: 98.47%
+
+Epoch 8: 100% 127/127 [00:25<00:00,  4.98it/s, loss=2.07, v_num=0]
+Epoch 8: 100% 127/127 [00:25<00:00,  4.98it/s, loss=2.07, v_num=0]Epoch 8, global step 1080: 'val/CER' reached 83.34072 (best 83.34072), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=8-step=1080.ckpt' as top 1
+Epoch 9:   0% 0/127 [00:00<?, ?it/s, loss=2.07, v_num=0]Blank class: 98, argmax blank%: 98.91%
+Blank class: 98, argmax blank%: 98.89%
+Blank class: 98, argmax blank%: 98.87%
+Blank class: 98, argmax blank%: 98.91%
+Blank class: 98, argmax blank%: 98.98%
+Blank class: 98, argmax blank%: 99.09%
+Blank class: 98, argmax blank%: 98.91%
+Blank class: 98, argmax blank%: 98.87%
+Blank class: 98, argmax blank%: 98.86%
+Blank class: 98, argmax blank%: 98.80%
+Blank class: 98, argmax blank%: 98.56%
+Blank class: 98, argmax blank%: 98.78%
+Blank class: 98, argmax blank%: 98.94%
+Blank class: 98, argmax blank%: 99.07%
+Blank class: 98, argmax blank%: 98.97%
+Blank class: 98, argmax blank%: 99.01%
+Blank class: 98, argmax blank%: 98.67%
+Blank class: 98, argmax blank%: 98.83%
+Blank class: 98, argmax blank%: 98.71%
+Blank class: 98, argmax blank%: 99.08%
+Epoch 9:  16% 20/127 [00:04<00:23,  4.47it/s, loss=2.12, v_num=0]Blank class: 98, argmax blank%: 99.03%
+Blank class: 98, argmax blank%: 99.01%
+Blank class: 98, argmax blank%: 98.66%
+Blank class: 98, argmax blank%: 99.06%
+Blank class: 98, argmax blank%: 99.21%
+Blank class: 98, argmax blank%: 98.97%
+Blank class: 98, argmax blank%: 98.84%
+Blank class: 98, argmax blank%: 98.72%
+Blank class: 98, argmax blank%: 98.70%
+Blank class: 98, argmax blank%: 98.74%
+Blank class: 98, argmax blank%: 98.90%
+Blank class: 98, argmax blank%: 98.78%
+Blank class: 98, argmax blank%: 98.73%
+Blank class: 98, argmax blank%: 98.54%
+Blank class: 98, argmax blank%: 98.69%
+Blank class: 98, argmax blank%: 98.60%
+Blank class: 98, argmax blank%: 98.94%
+Blank class: 98, argmax blank%: 98.98%
+Blank class: 98, argmax blank%: 98.87%
+Blank class: 98, argmax blank%: 98.67%
+Epoch 9:  31% 40/127 [00:08<00:17,  4.84it/s, loss=2.11, v_num=0]Blank class: 98, argmax blank%: 98.77%
+Blank class: 98, argmax blank%: 98.53%
+Blank class: 98, argmax blank%: 98.64%
+Blank class: 98, argmax blank%: 98.46%
+Blank class: 98, argmax blank%: 98.63%
+Blank class: 98, argmax blank%: 98.81%
+Blank class: 98, argmax blank%: 98.87%
+Blank class: 98, argmax blank%: 98.77%
+Blank class: 98, argmax blank%: 98.68%
+Blank class: 98, argmax blank%: 98.71%
+Blank class: 98, argmax blank%: 98.33%
+Blank class: 98, argmax blank%: 98.59%
+Blank class: 98, argmax blank%: 98.65%
+Blank class: 98, argmax blank%: 98.75%
+Blank class: 98, argmax blank%: 99.00%
+Blank class: 98, argmax blank%: 98.99%
+Blank class: 98, argmax blank%: 98.86%
+Blank class: 98, argmax blank%: 98.51%
+Blank class: 98, argmax blank%: 98.22%
+Blank class: 98, argmax blank%: 98.55%
+Epoch 9:  47% 60/127 [00:12<00:13,  4.99it/s, loss=2.04, v_num=0]Blank class: 98, argmax blank%: 98.65%
+Blank class: 98, argmax blank%: 98.66%
+Blank class: 98, argmax blank%: 98.71%
+Blank class: 98, argmax blank%: 98.30%
+Blank class: 98, argmax blank%: 98.62%
+Blank class: 98, argmax blank%: 99.02%
+Blank class: 98, argmax blank%: 98.86%
+Blank class: 98, argmax blank%: 98.46%
+Blank class: 98, argmax blank%: 98.53%
+Blank class: 98, argmax blank%: 98.52%
+Blank class: 98, argmax blank%: 98.53%
+Blank class: 98, argmax blank%: 98.47%
+Blank class: 98, argmax blank%: 98.53%
+Blank class: 98, argmax blank%: 98.72%
+Blank class: 98, argmax blank%: 98.76%
+Blank class: 98, argmax blank%: 98.65%
+Blank class: 98, argmax blank%: 98.42%
+Blank class: 98, argmax blank%: 98.23%
+Blank class: 98, argmax blank%: 98.76%
+Blank class: 98, argmax blank%: 98.94%
+Epoch 9:  63% 80/127 [00:15<00:09,  5.06it/s, loss=2.01, v_num=0]Blank class: 98, argmax blank%: 98.92%
+Blank class: 98, argmax blank%: 98.47%
+Blank class: 98, argmax blank%: 98.54%
+Blank class: 98, argmax blank%: 98.37%
+Blank class: 98, argmax blank%: 98.61%
+Blank class: 98, argmax blank%: 98.74%
+Blank class: 98, argmax blank%: 98.68%
+Blank class: 98, argmax blank%: 98.45%
+Blank class: 98, argmax blank%: 98.30%
+Blank class: 98, argmax blank%: 98.41%
+Blank class: 98, argmax blank%: 99.03%
+Blank class: 98, argmax blank%: 98.64%
+Blank class: 98, argmax blank%: 98.75%
+Blank class: 98, argmax blank%: 98.48%
+Blank class: 98, argmax blank%: 98.53%
+Blank class: 98, argmax blank%: 98.25%
+Blank class: 98, argmax blank%: 98.44%
+Blank class: 98, argmax blank%: 98.81%
+Blank class: 98, argmax blank%: 98.87%
+Blank class: 98, argmax blank%: 98.44%
+Epoch 9:  79% 100/127 [00:19<00:05,  5.06it/s, loss=1.99, v_num=0]Blank class: 98, argmax blank%: 98.38%
+Blank class: 98, argmax blank%: 98.55%
+Blank class: 98, argmax blank%: 98.64%
+Blank class: 98, argmax blank%: 98.48%
+Blank class: 98, argmax blank%: 98.65%
+Blank class: 98, argmax blank%: 98.75%
+Blank class: 98, argmax blank%: 98.62%
+Blank class: 98, argmax blank%: 98.48%
+Blank class: 98, argmax blank%: 97.95%
+Blank class: 98, argmax blank%: 98.02%
+Blank class: 98, argmax blank%: 98.54%
+Blank class: 98, argmax blank%: 98.49%
+Blank class: 98, argmax blank%: 98.16%
+Blank class: 98, argmax blank%: 98.43%
+Blank class: 98, argmax blank%: 98.69%
+Blank class: 98, argmax blank%: 98.87%
+Blank class: 98, argmax blank%: 98.88%
+Blank class: 98, argmax blank%: 98.63%
+Blank class: 98, argmax blank%: 98.20%
+Blank class: 98, argmax blank%: 98.22%
+Epoch 9:  94% 120/127 [00:23<00:01,  5.08it/s, loss=1.97, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 98.73%
+Blank class: 98, argmax blank%: 98.62%
+Blank class: 98, argmax blank%: 98.85%
+Blank class: 98, argmax blank%: 98.58%
+Blank class: 98, argmax blank%: 98.32%
+Blank class: 98, argmax blank%: 98.15%
+Blank class: 98, argmax blank%: 97.94%
+
+Epoch 9: 100% 127/127 [00:25<00:00,  5.08it/s, loss=1.97, v_num=0]
+Epoch 9: 100% 127/127 [00:25<00:00,  5.08it/s, loss=1.97, v_num=0]Epoch 9, global step 1200: 'val/CER' reached 77.73593 (best 77.73593), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=9-step=1200.ckpt' as top 1
+Epoch 10:   0% 0/127 [00:00<?, ?it/s, loss=1.97, v_num=0]Blank class: 98, argmax blank%: 98.68%
+Blank class: 98, argmax blank%: 98.88%
+Blank class: 98, argmax blank%: 99.22%
+Blank class: 98, argmax blank%: 98.72%
+Blank class: 98, argmax blank%: 98.25%
+Blank class: 98, argmax blank%: 98.17%
+Blank class: 98, argmax blank%: 98.22%
+Blank class: 98, argmax blank%: 98.48%
+Blank class: 98, argmax blank%: 98.89%
+Blank class: 98, argmax blank%: 98.98%
+Blank class: 98, argmax blank%: 99.06%
+Blank class: 98, argmax blank%: 98.92%
+Blank class: 98, argmax blank%: 98.65%
+Blank class: 98, argmax blank%: 98.39%
+Blank class: 98, argmax blank%: 98.33%
+Blank class: 98, argmax blank%: 98.16%
+Blank class: 98, argmax blank%: 98.36%
+Blank class: 98, argmax blank%: 98.33%
+Blank class: 98, argmax blank%: 98.34%
+Blank class: 98, argmax blank%: 98.65%
+Epoch 10:  16% 20/127 [00:04<00:23,  4.51it/s, loss=1.98, v_num=0]Blank class: 98, argmax blank%: 98.56%
+Blank class: 98, argmax blank%: 98.41%
+Blank class: 98, argmax blank%: 98.13%
+Blank class: 98, argmax blank%: 97.97%
+Blank class: 98, argmax blank%: 98.17%
+Blank class: 98, argmax blank%: 98.61%
+Blank class: 98, argmax blank%: 98.46%
+Blank class: 98, argmax blank%: 98.48%
+Blank class: 98, argmax blank%: 98.16%
+Blank class: 98, argmax blank%: 98.19%
+Blank class: 98, argmax blank%: 98.34%
+Blank class: 98, argmax blank%: 98.51%
+Blank class: 98, argmax blank%: 98.40%
+Blank class: 98, argmax blank%: 98.61%
+Blank class: 98, argmax blank%: 98.43%
+Blank class: 98, argmax blank%: 98.14%
+Blank class: 98, argmax blank%: 98.35%
+Blank class: 98, argmax blank%: 98.13%
+Blank class: 98, argmax blank%: 98.33%
+Blank class: 98, argmax blank%: 98.16%
+Epoch 10:  31% 40/127 [00:08<00:17,  4.87it/s, loss=1.91, v_num=0]Blank class: 98, argmax blank%: 98.43%
+Blank class: 98, argmax blank%: 98.39%
+Blank class: 98, argmax blank%: 98.33%
+Blank class: 98, argmax blank%: 98.90%
+Blank class: 98, argmax blank%: 98.44%
+Blank class: 98, argmax blank%: 98.30%
+Blank class: 98, argmax blank%: 98.14%
+Blank class: 98, argmax blank%: 98.19%
+Blank class: 98, argmax blank%: 98.27%
+Blank class: 98, argmax blank%: 98.44%
+Blank class: 98, argmax blank%: 98.57%
+Blank class: 98, argmax blank%: 98.55%
+Blank class: 98, argmax blank%: 98.41%
+Blank class: 98, argmax blank%: 98.54%
+Blank class: 98, argmax blank%: 98.14%
+Blank class: 98, argmax blank%: 98.75%
+Blank class: 98, argmax blank%: 98.35%
+Blank class: 98, argmax blank%: 98.07%
+Blank class: 98, argmax blank%: 98.08%
+Blank class: 98, argmax blank%: 98.15%
+Epoch 10:  47% 60/127 [00:12<00:13,  4.93it/s, loss=1.91, v_num=0]Blank class: 98, argmax blank%: 98.31%
+Blank class: 98, argmax blank%: 98.65%
+Blank class: 98, argmax blank%: 98.43%
+Blank class: 98, argmax blank%: 98.43%
+Blank class: 98, argmax blank%: 98.12%
+Blank class: 98, argmax blank%: 98.28%
+Blank class: 98, argmax blank%: 97.96%
+Blank class: 98, argmax blank%: 97.80%
+Blank class: 98, argmax blank%: 98.10%
+Blank class: 98, argmax blank%: 98.46%
+Blank class: 98, argmax blank%: 98.57%
+Blank class: 98, argmax blank%: 98.66%
+Blank class: 98, argmax blank%: 98.99%
+Blank class: 98, argmax blank%: 98.69%
+Blank class: 98, argmax blank%: 98.09%
+Blank class: 98, argmax blank%: 97.98%
+Blank class: 98, argmax blank%: 98.29%
+Blank class: 98, argmax blank%: 98.31%
+Blank class: 98, argmax blank%: 98.41%
+Blank class: 98, argmax blank%: 98.32%
+Epoch 10:  63% 80/127 [00:16<00:09,  5.00it/s, loss=1.96, v_num=0]Blank class: 98, argmax blank%: 98.24%
+Blank class: 98, argmax blank%: 98.22%
+Blank class: 98, argmax blank%: 98.47%
+Blank class: 98, argmax blank%: 98.80%
+Blank class: 98, argmax blank%: 98.68%
+Blank class: 98, argmax blank%: 98.57%
+Blank class: 98, argmax blank%: 98.43%
+Blank class: 98, argmax blank%: 97.96%
+Blank class: 98, argmax blank%: 98.34%
+Blank class: 98, argmax blank%: 98.51%
+Blank class: 98, argmax blank%: 98.20%
+Blank class: 98, argmax blank%: 98.37%
+Blank class: 98, argmax blank%: 98.25%
+Blank class: 98, argmax blank%: 98.43%
+Blank class: 98, argmax blank%: 98.40%
+Blank class: 98, argmax blank%: 98.23%
+Blank class: 98, argmax blank%: 98.02%
+Blank class: 98, argmax blank%: 97.72%
+Blank class: 98, argmax blank%: 98.08%
+Blank class: 98, argmax blank%: 98.49%
+Epoch 10:  79% 100/127 [00:19<00:05,  5.03it/s, loss=1.91, v_num=0]Blank class: 98, argmax blank%: 98.43%
+Blank class: 98, argmax blank%: 98.50%
+Blank class: 98, argmax blank%: 98.01%
+Blank class: 98, argmax blank%: 98.20%
+Blank class: 98, argmax blank%: 98.46%
+Blank class: 98, argmax blank%: 98.60%
+Blank class: 98, argmax blank%: 98.13%
+Blank class: 98, argmax blank%: 97.86%
+Blank class: 98, argmax blank%: 97.90%
+Blank class: 98, argmax blank%: 97.73%
+Blank class: 98, argmax blank%: 98.23%
+Blank class: 98, argmax blank%: 98.61%
+Blank class: 98, argmax blank%: 98.35%
+Blank class: 98, argmax blank%: 98.26%
+Blank class: 98, argmax blank%: 98.13%
+Blank class: 98, argmax blank%: 98.29%
+Blank class: 98, argmax blank%: 98.04%
+Blank class: 98, argmax blank%: 97.88%
+Blank class: 98, argmax blank%: 97.92%
+Blank class: 98, argmax blank%: 98.21%
+Epoch 10:  94% 120/127 [00:23<00:01,  5.05it/s, loss=1.84, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 98.36%
+Blank class: 98, argmax blank%: 98.35%
+Blank class: 98, argmax blank%: 98.70%
+Blank class: 98, argmax blank%: 98.35%
+Blank class: 98, argmax blank%: 97.99%
+Blank class: 98, argmax blank%: 97.98%
+Blank class: 98, argmax blank%: 97.52%
+
+Epoch 10: 100% 127/127 [00:25<00:00,  5.04it/s, loss=1.84, v_num=0]
+Epoch 10: 100% 127/127 [00:25<00:00,  5.04it/s, loss=1.84, v_num=0]Epoch 10, global step 1320: 'val/CER' reached 73.10590 (best 73.10590), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=10-step=1320.ckpt' as top 1
+Epoch 11:   0% 0/127 [00:00<?, ?it/s, loss=1.84, v_num=0]Blank class: 98, argmax blank%: 98.26%
+Blank class: 98, argmax blank%: 98.23%
+Blank class: 98, argmax blank%: 98.25%
+Blank class: 98, argmax blank%: 97.79%
+Blank class: 98, argmax blank%: 97.95%
+Blank class: 98, argmax blank%: 98.19%
+Blank class: 98, argmax blank%: 98.37%
+Blank class: 98, argmax blank%: 98.14%
+Blank class: 98, argmax blank%: 97.64%
+Blank class: 98, argmax blank%: 97.63%
+Blank class: 98, argmax blank%: 97.88%
+Blank class: 98, argmax blank%: 98.07%
+Blank class: 98, argmax blank%: 98.30%
+Blank class: 98, argmax blank%: 98.24%
+Blank class: 98, argmax blank%: 98.59%
+Blank class: 98, argmax blank%: 98.26%
+Blank class: 98, argmax blank%: 97.74%
+Blank class: 98, argmax blank%: 97.83%
+Blank class: 98, argmax blank%: 97.76%
+Blank class: 98, argmax blank%: 97.84%
+Epoch 11:  16% 20/127 [00:04<00:23,  4.48it/s, loss=1.77, v_num=0]Blank class: 98, argmax blank%: 97.98%
+Blank class: 98, argmax blank%: 97.77%
+Blank class: 98, argmax blank%: 97.88%
+Blank class: 98, argmax blank%: 98.27%
+Blank class: 98, argmax blank%: 98.36%
+Blank class: 98, argmax blank%: 98.52%
+Blank class: 98, argmax blank%: 98.06%
+Blank class: 98, argmax blank%: 98.06%
+Blank class: 98, argmax blank%: 98.26%
+Blank class: 98, argmax blank%: 97.91%
+Blank class: 98, argmax blank%: 98.01%
+Blank class: 98, argmax blank%: 98.09%
+Blank class: 98, argmax blank%: 98.05%
+Blank class: 98, argmax blank%: 97.98%
+Blank class: 98, argmax blank%: 98.04%
+Blank class: 98, argmax blank%: 97.80%
+Blank class: 98, argmax blank%: 97.91%
+Blank class: 98, argmax blank%: 98.15%
+Blank class: 98, argmax blank%: 98.34%
+Blank class: 98, argmax blank%: 98.38%
+Epoch 11:  31% 40/127 [00:08<00:18,  4.83it/s, loss=1.85, v_num=0]Blank class: 98, argmax blank%: 98.31%
+Blank class: 98, argmax blank%: 98.02%
+Blank class: 98, argmax blank%: 97.89%
+Blank class: 98, argmax blank%: 98.08%
+Blank class: 98, argmax blank%: 98.25%
+Blank class: 98, argmax blank%: 98.20%
+Blank class: 98, argmax blank%: 98.06%
+Blank class: 98, argmax blank%: 98.22%
+Blank class: 98, argmax blank%: 98.22%
+Blank class: 98, argmax blank%: 97.86%
+Blank class: 98, argmax blank%: 97.73%
+Blank class: 98, argmax blank%: 98.00%
+Blank class: 98, argmax blank%: 98.01%
+Blank class: 98, argmax blank%: 97.90%
+Blank class: 98, argmax blank%: 97.93%
+Blank class: 98, argmax blank%: 97.92%
+Blank class: 98, argmax blank%: 98.07%
+Blank class: 98, argmax blank%: 98.12%
+Blank class: 98, argmax blank%: 98.24%
+Blank class: 98, argmax blank%: 98.20%
+Epoch 11:  47% 60/127 [00:12<00:13,  4.92it/s, loss=1.77, v_num=0]Blank class: 98, argmax blank%: 98.03%
+Blank class: 98, argmax blank%: 97.54%
+Blank class: 98, argmax blank%: 97.68%
+Blank class: 98, argmax blank%: 98.09%
+Blank class: 98, argmax blank%: 98.04%
+Blank class: 98, argmax blank%: 98.09%
+Blank class: 98, argmax blank%: 97.81%
+Blank class: 98, argmax blank%: 97.61%
+Blank class: 98, argmax blank%: 97.62%
+Blank class: 98, argmax blank%: 97.57%
+Blank class: 98, argmax blank%: 97.91%
+Blank class: 98, argmax blank%: 97.87%
+Blank class: 98, argmax blank%: 97.85%
+Blank class: 98, argmax blank%: 98.17%
+Blank class: 98, argmax blank%: 98.24%
+Blank class: 98, argmax blank%: 98.15%
+Blank class: 98, argmax blank%: 97.95%
+Blank class: 98, argmax blank%: 97.62%
+Blank class: 98, argmax blank%: 97.57%
+Blank class: 98, argmax blank%: 97.87%
+Epoch 11:  63% 80/127 [00:15<00:09,  5.00it/s, loss=1.8, v_num=0] Blank class: 98, argmax blank%: 98.10%
+Blank class: 98, argmax blank%: 97.66%
+Blank class: 98, argmax blank%: 97.86%
+Blank class: 98, argmax blank%: 97.35%
+Blank class: 98, argmax blank%: 97.66%
+Blank class: 98, argmax blank%: 98.02%
+Blank class: 98, argmax blank%: 98.00%
+Blank class: 98, argmax blank%: 98.20%
+Blank class: 98, argmax blank%: 98.42%
+Blank class: 98, argmax blank%: 98.19%
+Blank class: 98, argmax blank%: 97.48%
+Blank class: 98, argmax blank%: 97.73%
+Blank class: 98, argmax blank%: 97.49%
+Blank class: 98, argmax blank%: 97.71%
+Blank class: 98, argmax blank%: 98.28%
+Blank class: 98, argmax blank%: 97.68%
+Blank class: 98, argmax blank%: 98.11%
+Blank class: 98, argmax blank%: 97.95%
+Blank class: 98, argmax blank%: 97.81%
+Blank class: 98, argmax blank%: 97.83%
+Epoch 11:  79% 100/127 [00:19<00:05,  5.05it/s, loss=1.74, v_num=0]Blank class: 98, argmax blank%: 97.45%
+Blank class: 98, argmax blank%: 97.89%
+Blank class: 98, argmax blank%: 98.08%
+Blank class: 98, argmax blank%: 98.02%
+Blank class: 98, argmax blank%: 98.25%
+Blank class: 98, argmax blank%: 98.40%
+Blank class: 98, argmax blank%: 97.86%
+Blank class: 98, argmax blank%: 97.83%
+Blank class: 98, argmax blank%: 97.49%
+Blank class: 98, argmax blank%: 97.44%
+Blank class: 98, argmax blank%: 97.76%
+Blank class: 98, argmax blank%: 97.67%
+Blank class: 98, argmax blank%: 97.87%
+Blank class: 98, argmax blank%: 98.15%
+Blank class: 98, argmax blank%: 97.95%
+Blank class: 98, argmax blank%: 97.74%
+Blank class: 98, argmax blank%: 97.49%
+Blank class: 98, argmax blank%: 98.05%
+Blank class: 98, argmax blank%: 98.03%
+Blank class: 98, argmax blank%: 98.09%
+Epoch 11:  94% 120/127 [00:23<00:01,  5.07it/s, loss=1.76, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 98.09%
+Blank class: 98, argmax blank%: 97.98%
+Blank class: 98, argmax blank%: 98.41%
+Blank class: 98, argmax blank%: 98.03%
+Blank class: 98, argmax blank%: 97.62%
+Blank class: 98, argmax blank%: 97.46%
+Blank class: 98, argmax blank%: 97.04%
+
+Epoch 11: 100% 127/127 [00:25<00:00,  5.06it/s, loss=1.76, v_num=0]
+Epoch 11: 100% 127/127 [00:25<00:00,  5.06it/s, loss=1.76, v_num=0]Epoch 11, global step 1440: 'val/CER' reached 66.59282 (best 66.59282), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=11-step=1440.ckpt' as top 1
+Epoch 12:   0% 0/127 [00:00<?, ?it/s, loss=1.76, v_num=0]Blank class: 98, argmax blank%: 98.02%
+Blank class: 98, argmax blank%: 97.77%
+Blank class: 98, argmax blank%: 97.82%
+Blank class: 98, argmax blank%: 97.42%
+Blank class: 98, argmax blank%: 97.64%
+Blank class: 98, argmax blank%: 97.89%
+Blank class: 98, argmax blank%: 98.08%
+Blank class: 98, argmax blank%: 98.13%
+Blank class: 98, argmax blank%: 97.97%
+Blank class: 98, argmax blank%: 97.99%
+Blank class: 98, argmax blank%: 97.63%
+Blank class: 98, argmax blank%: 97.69%
+Blank class: 98, argmax blank%: 97.79%
+Blank class: 98, argmax blank%: 97.51%
+Blank class: 98, argmax blank%: 97.53%
+Blank class: 98, argmax blank%: 98.04%
+Blank class: 98, argmax blank%: 97.74%
+Blank class: 98, argmax blank%: 98.03%
+Blank class: 98, argmax blank%: 97.47%
+Blank class: 98, argmax blank%: 97.39%
+Epoch 12:  16% 20/127 [00:04<00:23,  4.55it/s, loss=1.71, v_num=0]Blank class: 98, argmax blank%: 97.24%
+Blank class: 98, argmax blank%: 97.55%
+Blank class: 98, argmax blank%: 97.77%
+Blank class: 98, argmax blank%: 98.03%
+Blank class: 98, argmax blank%: 97.91%
+Blank class: 98, argmax blank%: 97.76%
+Blank class: 98, argmax blank%: 97.29%
+Blank class: 98, argmax blank%: 97.36%
+Blank class: 98, argmax blank%: 97.34%
+Blank class: 98, argmax blank%: 97.68%
+Blank class: 98, argmax blank%: 98.09%
+Blank class: 98, argmax blank%: 97.74%
+Blank class: 98, argmax blank%: 97.81%
+Blank class: 98, argmax blank%: 97.33%
+Blank class: 98, argmax blank%: 97.24%
+Blank class: 98, argmax blank%: 96.96%
+Blank class: 98, argmax blank%: 97.51%
+Blank class: 98, argmax blank%: 97.29%
+Blank class: 98, argmax blank%: 98.05%
+Blank class: 98, argmax blank%: 97.77%
+Epoch 12:  31% 40/127 [00:08<00:18,  4.77it/s, loss=1.66, v_num=0]Blank class: 98, argmax blank%: 98.16%
+Blank class: 98, argmax blank%: 97.93%
+Blank class: 98, argmax blank%: 97.87%
+Blank class: 98, argmax blank%: 97.79%
+Blank class: 98, argmax blank%: 97.16%
+Blank class: 98, argmax blank%: 97.35%
+Blank class: 98, argmax blank%: 97.32%
+Blank class: 98, argmax blank%: 97.89%
+Blank class: 98, argmax blank%: 97.50%
+Blank class: 98, argmax blank%: 97.79%
+Blank class: 98, argmax blank%: 97.86%
+Blank class: 98, argmax blank%: 97.67%
+Blank class: 98, argmax blank%: 97.77%
+Blank class: 98, argmax blank%: 97.73%
+Blank class: 98, argmax blank%: 97.45%
+Blank class: 98, argmax blank%: 97.19%
+Blank class: 98, argmax blank%: 97.49%
+Blank class: 98, argmax blank%: 97.59%
+Blank class: 98, argmax blank%: 97.90%
+Blank class: 98, argmax blank%: 97.84%
+Epoch 12:  47% 60/127 [00:12<00:13,  4.89it/s, loss=1.67, v_num=0]Blank class: 98, argmax blank%: 97.89%
+Blank class: 98, argmax blank%: 97.62%
+Blank class: 98, argmax blank%: 97.60%
+Blank class: 98, argmax blank%: 97.41%
+Blank class: 98, argmax blank%: 97.51%
+Blank class: 98, argmax blank%: 97.91%
+Blank class: 98, argmax blank%: 98.03%
+Blank class: 98, argmax blank%: 97.80%
+Blank class: 98, argmax blank%: 97.37%
+Blank class: 98, argmax blank%: 96.98%
+Blank class: 98, argmax blank%: 97.35%
+Blank class: 98, argmax blank%: 97.47%
+Blank class: 98, argmax blank%: 97.40%
+Blank class: 98, argmax blank%: 97.96%
+Blank class: 98, argmax blank%: 97.64%
+Blank class: 98, argmax blank%: 97.39%
+Blank class: 98, argmax blank%: 97.23%
+Blank class: 98, argmax blank%: 97.30%
+Blank class: 98, argmax blank%: 97.38%
+Blank class: 98, argmax blank%: 97.26%
+Epoch 12:  63% 80/127 [00:16<00:09,  4.97it/s, loss=1.65, v_num=0]Blank class: 98, argmax blank%: 97.63%
+Blank class: 98, argmax blank%: 97.70%
+Blank class: 98, argmax blank%: 97.68%
+Blank class: 98, argmax blank%: 97.98%
+Blank class: 98, argmax blank%: 97.56%
+Blank class: 98, argmax blank%: 97.39%
+Blank class: 98, argmax blank%: 97.01%
+Blank class: 98, argmax blank%: 97.18%
+Blank class: 98, argmax blank%: 97.11%
+Blank class: 98, argmax blank%: 97.59%
+Blank class: 98, argmax blank%: 97.86%
+Blank class: 98, argmax blank%: 97.74%
+Blank class: 98, argmax blank%: 97.60%
+Blank class: 98, argmax blank%: 97.24%
+Blank class: 98, argmax blank%: 97.13%
+Blank class: 98, argmax blank%: 97.49%
+Blank class: 98, argmax blank%: 97.42%
+Blank class: 98, argmax blank%: 97.68%
+Blank class: 98, argmax blank%: 97.31%
+Blank class: 98, argmax blank%: 97.58%
+Epoch 12:  79% 100/127 [00:20<00:05,  4.99it/s, loss=1.63, v_num=0]Blank class: 98, argmax blank%: 97.60%
+Blank class: 98, argmax blank%: 97.53%
+Blank class: 98, argmax blank%: 97.66%
+Blank class: 98, argmax blank%: 97.53%
+Blank class: 98, argmax blank%: 97.38%
+Blank class: 98, argmax blank%: 97.84%
+Blank class: 98, argmax blank%: 97.16%
+Blank class: 98, argmax blank%: 97.35%
+Blank class: 98, argmax blank%: 97.35%
+Blank class: 98, argmax blank%: 97.34%
+Blank class: 98, argmax blank%: 97.48%
+Blank class: 98, argmax blank%: 98.17%
+Blank class: 98, argmax blank%: 97.82%
+Blank class: 98, argmax blank%: 97.87%
+Blank class: 98, argmax blank%: 97.55%
+Blank class: 98, argmax blank%: 97.40%
+Blank class: 98, argmax blank%: 97.59%
+Blank class: 98, argmax blank%: 97.82%
+Blank class: 98, argmax blank%: 97.68%
+Blank class: 98, argmax blank%: 97.42%
+Epoch 12:  94% 120/127 [00:23<00:01,  5.06it/s, loss=1.64, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 97.16%
+Blank class: 98, argmax blank%: 96.66%
+Blank class: 98, argmax blank%: 96.37%
+Blank class: 98, argmax blank%: 96.10%
+Blank class: 98, argmax blank%: 95.75%
+
+Epoch 12: 100% 127/127 [00:25<00:00,  5.05it/s, loss=1.64, v_num=0]
+Epoch 12: 100% 127/127 [00:25<00:00,  5.05it/s, loss=1.64, v_num=0]Epoch 12, global step 1560: 'val/CER' reached 52.68055 (best 52.68055), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=12-step=1560.ckpt' as top 1
+Epoch 13:   0% 0/127 [00:00<?, ?it/s, loss=1.64, v_num=0]Blank class: 98, argmax blank%: 96.82%
+Blank class: 98, argmax blank%: 96.61%
+Blank class: 98, argmax blank%: 97.02%
+Blank class: 98, argmax blank%: 97.15%
+Blank class: 98, argmax blank%: 97.36%
+Blank class: 98, argmax blank%: 97.52%
+Blank class: 98, argmax blank%: 98.24%
+Blank class: 98, argmax blank%: 98.01%
+Blank class: 98, argmax blank%: 97.80%
+Blank class: 98, argmax blank%: 97.46%
+Blank class: 98, argmax blank%: 97.21%
+Blank class: 98, argmax blank%: 97.03%
+Blank class: 98, argmax blank%: 97.17%
+Blank class: 98, argmax blank%: 97.37%
+Blank class: 98, argmax blank%: 97.72%
+Blank class: 98, argmax blank%: 97.94%
+Blank class: 98, argmax blank%: 97.91%
+Blank class: 98, argmax blank%: 97.34%
+Blank class: 98, argmax blank%: 97.69%
+Blank class: 98, argmax blank%: 97.21%
+Epoch 13:  16% 20/127 [00:04<00:23,  4.49it/s, loss=1.62, v_num=0]Blank class: 98, argmax blank%: 97.09%
+Blank class: 98, argmax blank%: 96.87%
+Blank class: 98, argmax blank%: 97.28%
+Blank class: 98, argmax blank%: 97.41%
+Blank class: 98, argmax blank%: 97.60%
+Blank class: 98, argmax blank%: 97.83%
+Blank class: 98, argmax blank%: 97.47%
+Blank class: 98, argmax blank%: 97.58%
+Blank class: 98, argmax blank%: 97.62%
+Blank class: 98, argmax blank%: 97.57%
+Blank class: 98, argmax blank%: 97.90%
+Blank class: 98, argmax blank%: 97.65%
+Blank class: 98, argmax blank%: 97.68%
+Blank class: 98, argmax blank%: 97.28%
+Blank class: 98, argmax blank%: 97.07%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.97%
+Blank class: 98, argmax blank%: 97.03%
+Blank class: 98, argmax blank%: 97.89%
+Epoch 13:  31% 40/127 [00:08<00:18,  4.71it/s, loss=1.6, v_num=0] Blank class: 98, argmax blank%: 97.85%
+Blank class: 98, argmax blank%: 98.11%
+Blank class: 98, argmax blank%: 97.93%
+Blank class: 98, argmax blank%: 97.78%
+Blank class: 98, argmax blank%: 97.10%
+Blank class: 98, argmax blank%: 97.02%
+Blank class: 98, argmax blank%: 96.82%
+Blank class: 98, argmax blank%: 97.04%
+Blank class: 98, argmax blank%: 97.17%
+Blank class: 98, argmax blank%: 97.45%
+Blank class: 98, argmax blank%: 97.51%
+Blank class: 98, argmax blank%: 97.52%
+Blank class: 98, argmax blank%: 97.49%
+Blank class: 98, argmax blank%: 97.34%
+Blank class: 98, argmax blank%: 97.21%
+Blank class: 98, argmax blank%: 97.32%
+Blank class: 98, argmax blank%: 97.40%
+Blank class: 98, argmax blank%: 97.04%
+Blank class: 98, argmax blank%: 97.14%
+Blank class: 98, argmax blank%: 97.33%
+Epoch 13:  47% 60/127 [00:12<00:13,  4.90it/s, loss=1.58, v_num=0]Blank class: 98, argmax blank%: 97.36%
+Blank class: 98, argmax blank%: 97.67%
+Blank class: 98, argmax blank%: 97.61%
+Blank class: 98, argmax blank%: 97.34%
+Blank class: 98, argmax blank%: 97.33%
+Blank class: 98, argmax blank%: 96.85%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 97.38%
+Blank class: 98, argmax blank%: 97.61%
+Blank class: 98, argmax blank%: 97.57%
+Blank class: 98, argmax blank%: 97.88%
+Blank class: 98, argmax blank%: 97.64%
+Blank class: 98, argmax blank%: 97.28%
+Blank class: 98, argmax blank%: 97.20%
+Blank class: 98, argmax blank%: 97.04%
+Blank class: 98, argmax blank%: 97.54%
+Blank class: 98, argmax blank%: 97.57%
+Blank class: 98, argmax blank%: 97.41%
+Blank class: 98, argmax blank%: 97.29%
+Blank class: 98, argmax blank%: 97.50%
+Epoch 13:  63% 80/127 [00:16<00:09,  4.94it/s, loss=1.55, v_num=0]Blank class: 98, argmax blank%: 96.69%
+Blank class: 98, argmax blank%: 96.94%
+Blank class: 98, argmax blank%: 97.15%
+Blank class: 98, argmax blank%: 97.06%
+Blank class: 98, argmax blank%: 97.73%
+Blank class: 98, argmax blank%: 97.48%
+Blank class: 98, argmax blank%: 97.43%
+Blank class: 98, argmax blank%: 97.29%
+Blank class: 98, argmax blank%: 96.66%
+Blank class: 98, argmax blank%: 96.72%
+Blank class: 98, argmax blank%: 97.14%
+Blank class: 98, argmax blank%: 97.47%
+Blank class: 98, argmax blank%: 97.63%
+Blank class: 98, argmax blank%: 97.58%
+Blank class: 98, argmax blank%: 97.07%
+Blank class: 98, argmax blank%: 96.98%
+Blank class: 98, argmax blank%: 97.11%
+Blank class: 98, argmax blank%: 97.14%
+Blank class: 98, argmax blank%: 97.34%
+Blank class: 98, argmax blank%: 97.32%
+Epoch 13:  79% 100/127 [00:20<00:05,  4.97it/s, loss=1.56, v_num=0]Blank class: 98, argmax blank%: 97.17%
+Blank class: 98, argmax blank%: 97.01%
+Blank class: 98, argmax blank%: 97.27%
+Blank class: 98, argmax blank%: 97.14%
+Blank class: 98, argmax blank%: 97.40%
+Blank class: 98, argmax blank%: 97.61%
+Blank class: 98, argmax blank%: 97.29%
+Blank class: 98, argmax blank%: 97.18%
+Blank class: 98, argmax blank%: 96.80%
+Blank class: 98, argmax blank%: 96.95%
+Blank class: 98, argmax blank%: 97.36%
+Blank class: 98, argmax blank%: 97.71%
+Blank class: 98, argmax blank%: 97.44%
+Blank class: 98, argmax blank%: 97.36%
+Blank class: 98, argmax blank%: 97.19%
+Blank class: 98, argmax blank%: 96.85%
+Blank class: 98, argmax blank%: 96.89%
+Blank class: 98, argmax blank%: 96.84%
+Blank class: 98, argmax blank%: 97.26%
+Blank class: 98, argmax blank%: 97.34%
+Epoch 13:  94% 120/127 [00:23<00:01,  5.03it/s, loss=1.53, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 97.04%
+Blank class: 98, argmax blank%: 97.08%
+Blank class: 98, argmax blank%: 97.24%
+Blank class: 98, argmax blank%: 96.78%
+Blank class: 98, argmax blank%: 96.64%
+Blank class: 98, argmax blank%: 96.47%
+Blank class: 98, argmax blank%: 96.25%
+
+Epoch 13: 100% 127/127 [00:25<00:00,  5.01it/s, loss=1.53, v_num=0]
+Epoch 13: 100% 127/127 [00:25<00:00,  5.01it/s, loss=1.53, v_num=0]Epoch 13, global step 1680: 'val/CER' reached 50.97475 (best 50.97475), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=13-step=1680.ckpt' as top 1
+Epoch 14:   0% 0/127 [00:00<?, ?it/s, loss=1.53, v_num=0]Blank class: 98, argmax blank%: 97.29%
+Blank class: 98, argmax blank%: 97.05%
+Blank class: 98, argmax blank%: 97.04%
+Blank class: 98, argmax blank%: 97.20%
+Blank class: 98, argmax blank%: 97.42%
+Blank class: 98, argmax blank%: 97.52%
+Blank class: 98, argmax blank%: 97.38%
+Blank class: 98, argmax blank%: 97.48%
+Blank class: 98, argmax blank%: 96.93%
+Blank class: 98, argmax blank%: 96.99%
+Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 97.21%
+Blank class: 98, argmax blank%: 97.10%
+Blank class: 98, argmax blank%: 97.03%
+Blank class: 98, argmax blank%: 96.84%
+Blank class: 98, argmax blank%: 97.15%
+Blank class: 98, argmax blank%: 97.23%
+Blank class: 98, argmax blank%: 97.17%
+Blank class: 98, argmax blank%: 97.29%
+Blank class: 98, argmax blank%: 97.38%
+Epoch 14:  16% 20/127 [00:04<00:24,  4.45it/s, loss=1.53, v_num=0]Blank class: 98, argmax blank%: 97.22%
+Blank class: 98, argmax blank%: 97.22%
+Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 97.10%
+Blank class: 98, argmax blank%: 96.95%
+Blank class: 98, argmax blank%: 97.32%
+Blank class: 98, argmax blank%: 97.37%
+Blank class: 98, argmax blank%: 97.19%
+Blank class: 98, argmax blank%: 97.23%
+Blank class: 98, argmax blank%: 96.74%
+Blank class: 98, argmax blank%: 96.82%
+Blank class: 98, argmax blank%: 96.83%
+Blank class: 98, argmax blank%: 97.12%
+Blank class: 98, argmax blank%: 97.20%
+Blank class: 98, argmax blank%: 97.32%
+Blank class: 98, argmax blank%: 97.48%
+Blank class: 98, argmax blank%: 97.30%
+Blank class: 98, argmax blank%: 97.41%
+Blank class: 98, argmax blank%: 97.23%
+Blank class: 98, argmax blank%: 97.20%
+Epoch 14:  31% 40/127 [00:08<00:18,  4.80it/s, loss=1.5, v_num=0] Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 96.92%
+Blank class: 98, argmax blank%: 96.94%
+Blank class: 98, argmax blank%: 97.08%
+Blank class: 98, argmax blank%: 97.16%
+Blank class: 98, argmax blank%: 97.11%
+Blank class: 98, argmax blank%: 97.17%
+Blank class: 98, argmax blank%: 97.42%
+Blank class: 98, argmax blank%: 97.10%
+Blank class: 98, argmax blank%: 97.30%
+Blank class: 98, argmax blank%: 97.15%
+Blank class: 98, argmax blank%: 97.21%
+Blank class: 98, argmax blank%: 97.05%
+Blank class: 98, argmax blank%: 97.29%
+Blank class: 98, argmax blank%: 97.09%
+Blank class: 98, argmax blank%: 97.04%
+Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 97.02%
+Blank class: 98, argmax blank%: 96.62%
+Blank class: 98, argmax blank%: 96.68%
+Epoch 14:  47% 60/127 [00:12<00:13,  4.95it/s, loss=1.49, v_num=0]Blank class: 98, argmax blank%: 96.85%
+Blank class: 98, argmax blank%: 97.21%
+Blank class: 98, argmax blank%: 97.27%
+Blank class: 98, argmax blank%: 97.33%
+Blank class: 98, argmax blank%: 97.14%
+Blank class: 98, argmax blank%: 97.02%
+Blank class: 98, argmax blank%: 97.09%
+Blank class: 98, argmax blank%: 97.34%
+Blank class: 98, argmax blank%: 97.06%
+Blank class: 98, argmax blank%: 97.35%
+Blank class: 98, argmax blank%: 97.13%
+Blank class: 98, argmax blank%: 97.06%
+Blank class: 98, argmax blank%: 97.16%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 96.95%
+Blank class: 98, argmax blank%: 96.96%
+Blank class: 98, argmax blank%: 97.33%
+Blank class: 98, argmax blank%: 97.37%
+Blank class: 98, argmax blank%: 97.50%
+Epoch 14:  63% 80/127 [00:15<00:09,  5.02it/s, loss=1.48, v_num=0]Blank class: 98, argmax blank%: 97.22%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 97.12%
+Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 97.01%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 96.89%
+Blank class: 98, argmax blank%: 96.80%
+Blank class: 98, argmax blank%: 96.87%
+Blank class: 98, argmax blank%: 96.70%
+Blank class: 98, argmax blank%: 97.30%
+Blank class: 98, argmax blank%: 97.09%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 96.88%
+Blank class: 98, argmax blank%: 96.80%
+Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 97.04%
+Blank class: 98, argmax blank%: 97.22%
+Blank class: 98, argmax blank%: 97.22%
+Blank class: 98, argmax blank%: 97.25%
+Epoch 14:  79% 100/127 [00:19<00:05,  5.05it/s, loss=1.47, v_num=0]Blank class: 98, argmax blank%: 97.45%
+Blank class: 98, argmax blank%: 97.28%
+Blank class: 98, argmax blank%: 97.14%
+Blank class: 98, argmax blank%: 97.35%
+Blank class: 98, argmax blank%: 97.11%
+Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 97.03%
+Blank class: 98, argmax blank%: 97.12%
+Blank class: 98, argmax blank%: 97.07%
+Blank class: 98, argmax blank%: 97.29%
+Blank class: 98, argmax blank%: 97.13%
+Blank class: 98, argmax blank%: 97.11%
+Blank class: 98, argmax blank%: 96.59%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 97.02%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 97.15%
+Blank class: 98, argmax blank%: 97.25%
+Blank class: 98, argmax blank%: 97.05%
+Blank class: 98, argmax blank%: 97.05%
+Epoch 14:  94% 120/127 [00:23<00:01,  5.10it/s, loss=1.47, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 96.88%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 97.12%
+Blank class: 98, argmax blank%: 96.81%
+Blank class: 98, argmax blank%: 96.55%
+Blank class: 98, argmax blank%: 96.37%
+Blank class: 98, argmax blank%: 96.26%
+
+Epoch 14: 100% 127/127 [00:24<00:00,  5.09it/s, loss=1.47, v_num=0]
+Epoch 14: 100% 127/127 [00:24<00:00,  5.09it/s, loss=1.47, v_num=0]Epoch 14, global step 1800: 'val/CER' reached 49.46832 (best 49.46832), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=14-step=1800.ckpt' as top 1
+Epoch 15:   0% 0/127 [00:00<?, ?it/s, loss=1.47, v_num=0]Blank class: 98, argmax blank%: 97.12%
+Blank class: 98, argmax blank%: 97.03%
+Blank class: 98, argmax blank%: 97.20%
+Blank class: 98, argmax blank%: 97.12%
+Blank class: 98, argmax blank%: 97.26%
+Blank class: 98, argmax blank%: 97.23%
+Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 96.94%
+Blank class: 98, argmax blank%: 97.19%
+Blank class: 98, argmax blank%: 97.10%
+Blank class: 98, argmax blank%: 96.94%
+Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 97.08%
+Blank class: 98, argmax blank%: 96.94%
+Blank class: 98, argmax blank%: 97.04%
+Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 96.98%
+Blank class: 98, argmax blank%: 97.03%
+Blank class: 98, argmax blank%: 96.86%
+Blank class: 98, argmax blank%: 97.13%
+Epoch 15:  16% 20/127 [00:04<00:24,  4.38it/s, loss=1.4, v_num=0] Blank class: 98, argmax blank%: 97.13%
+Blank class: 98, argmax blank%: 97.21%
+Blank class: 98, argmax blank%: 97.06%
+Blank class: 98, argmax blank%: 96.80%
+Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 97.13%
+Blank class: 98, argmax blank%: 97.16%
+Blank class: 98, argmax blank%: 97.05%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 97.02%
+Blank class: 98, argmax blank%: 96.75%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 96.84%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 97.01%
+Blank class: 98, argmax blank%: 96.59%
+Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.83%
+Blank class: 98, argmax blank%: 97.06%
+Blank class: 98, argmax blank%: 96.78%
+Epoch 15:  31% 40/127 [00:08<00:18,  4.74it/s, loss=1.42, v_num=0]Blank class: 98, argmax blank%: 96.99%
+Blank class: 98, argmax blank%: 97.07%
+Blank class: 98, argmax blank%: 96.83%
+Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 96.60%
+Blank class: 98, argmax blank%: 96.69%
+Blank class: 98, argmax blank%: 96.79%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 96.82%
+Blank class: 98, argmax blank%: 96.64%
+Blank class: 98, argmax blank%: 97.27%
+Blank class: 98, argmax blank%: 97.17%
+Blank class: 98, argmax blank%: 97.13%
+Blank class: 98, argmax blank%: 97.15%
+Blank class: 98, argmax blank%: 97.15%
+Blank class: 98, argmax blank%: 96.84%
+Blank class: 98, argmax blank%: 96.60%
+Blank class: 98, argmax blank%: 96.50%
+Blank class: 98, argmax blank%: 96.70%
+Blank class: 98, argmax blank%: 96.77%
+Epoch 15:  47% 60/127 [00:12<00:13,  4.88it/s, loss=1.4, v_num=0] Blank class: 98, argmax blank%: 97.17%
+Blank class: 98, argmax blank%: 96.71%
+Blank class: 98, argmax blank%: 97.15%
+Blank class: 98, argmax blank%: 97.30%
+Blank class: 98, argmax blank%: 96.98%
+Blank class: 98, argmax blank%: 97.14%
+Blank class: 98, argmax blank%: 96.71%
+Blank class: 98, argmax blank%: 96.65%
+Blank class: 98, argmax blank%: 96.72%
+Blank class: 98, argmax blank%: 97.24%
+Blank class: 98, argmax blank%: 96.92%
+Blank class: 98, argmax blank%: 96.89%
+Blank class: 98, argmax blank%: 97.02%
+Blank class: 98, argmax blank%: 96.81%
+Blank class: 98, argmax blank%: 97.17%
+Blank class: 98, argmax blank%: 96.95%
+Blank class: 98, argmax blank%: 97.09%
+Blank class: 98, argmax blank%: 97.20%
+Blank class: 98, argmax blank%: 96.70%
+Blank class: 98, argmax blank%: 96.74%
+Epoch 15:  63% 80/127 [00:16<00:09,  4.93it/s, loss=1.42, v_num=0]Blank class: 98, argmax blank%: 96.74%
+Blank class: 98, argmax blank%: 96.72%
+Blank class: 98, argmax blank%: 96.57%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 97.01%
+Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 97.05%
+Blank class: 98, argmax blank%: 96.98%
+Blank class: 98, argmax blank%: 96.97%
+Blank class: 98, argmax blank%: 96.94%
+Blank class: 98, argmax blank%: 97.10%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 96.71%
+Blank class: 98, argmax blank%: 96.80%
+Blank class: 98, argmax blank%: 97.02%
+Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 96.57%
+Blank class: 98, argmax blank%: 96.95%
+Epoch 15:  79% 100/127 [00:20<00:05,  4.99it/s, loss=1.41, v_num=0]Blank class: 98, argmax blank%: 96.80%
+Blank class: 98, argmax blank%: 97.01%
+Blank class: 98, argmax blank%: 97.15%
+Blank class: 98, argmax blank%: 97.15%
+Blank class: 98, argmax blank%: 97.10%
+Blank class: 98, argmax blank%: 96.83%
+Blank class: 98, argmax blank%: 96.78%
+Blank class: 98, argmax blank%: 97.05%
+Blank class: 98, argmax blank%: 96.45%
+Blank class: 98, argmax blank%: 96.53%
+Blank class: 98, argmax blank%: 96.92%
+Blank class: 98, argmax blank%: 96.79%
+Blank class: 98, argmax blank%: 97.26%
+Blank class: 98, argmax blank%: 97.15%
+Blank class: 98, argmax blank%: 97.29%
+Blank class: 98, argmax blank%: 97.52%
+Blank class: 98, argmax blank%: 97.05%
+Blank class: 98, argmax blank%: 97.01%
+Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 96.85%
+Epoch 15:  94% 120/127 [00:23<00:01,  5.06it/s, loss=1.39, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 96.34%
+Blank class: 98, argmax blank%: 96.33%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 96.15%
+Blank class: 98, argmax blank%: 95.81%
+Blank class: 98, argmax blank%: 95.61%
+Blank class: 98, argmax blank%: 95.42%
+
+Epoch 15: 100% 127/127 [00:25<00:00,  5.06it/s, loss=1.39, v_num=0]
+Epoch 15: 100% 127/127 [00:25<00:00,  5.06it/s, loss=1.39, v_num=0]Epoch 15, global step 1920: 'val/CER' reached 43.26540 (best 43.26540), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=15-step=1920.ckpt' as top 1
+Epoch 16:   0% 0/127 [00:00<?, ?it/s, loss=1.39, v_num=0]Blank class: 98, argmax blank%: 96.82%
+Blank class: 98, argmax blank%: 96.94%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 95.95%
+Blank class: 98, argmax blank%: 96.70%
+Blank class: 98, argmax blank%: 96.93%
+Blank class: 98, argmax blank%: 97.07%
+Blank class: 98, argmax blank%: 97.14%
+Blank class: 98, argmax blank%: 96.78%
+Blank class: 98, argmax blank%: 96.79%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.82%
+Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 96.39%
+Blank class: 98, argmax blank%: 96.75%
+Blank class: 98, argmax blank%: 96.88%
+Blank class: 98, argmax blank%: 97.03%
+Blank class: 98, argmax blank%: 97.17%
+Blank class: 98, argmax blank%: 97.11%
+Blank class: 98, argmax blank%: 96.80%
+Epoch 16:  16% 20/127 [00:04<00:23,  4.51it/s, loss=1.36, v_num=0]Blank class: 98, argmax blank%: 96.85%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 96.61%
+Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.64%
+Blank class: 98, argmax blank%: 96.99%
+Blank class: 98, argmax blank%: 96.80%
+Blank class: 98, argmax blank%: 97.16%
+Blank class: 98, argmax blank%: 96.82%
+Blank class: 98, argmax blank%: 96.85%
+Blank class: 98, argmax blank%: 96.81%
+Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 96.42%
+Blank class: 98, argmax blank%: 96.55%
+Blank class: 98, argmax blank%: 96.48%
+Blank class: 98, argmax blank%: 97.07%
+Blank class: 98, argmax blank%: 96.83%
+Epoch 16:  31% 40/127 [00:08<00:18,  4.79it/s, loss=1.34, v_num=0]Blank class: 98, argmax blank%: 96.93%
+Blank class: 98, argmax blank%: 97.07%
+Blank class: 98, argmax blank%: 97.20%
+Blank class: 98, argmax blank%: 96.98%
+Blank class: 98, argmax blank%: 96.85%
+Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.82%
+Blank class: 98, argmax blank%: 96.66%
+Blank class: 98, argmax blank%: 96.24%
+Blank class: 98, argmax blank%: 96.38%
+Blank class: 98, argmax blank%: 96.31%
+Blank class: 98, argmax blank%: 96.82%
+Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 96.96%
+Blank class: 98, argmax blank%: 97.02%
+Blank class: 98, argmax blank%: 96.59%
+Blank class: 98, argmax blank%: 96.98%
+Blank class: 98, argmax blank%: 96.54%
+Epoch 16:  47% 60/127 [00:12<00:13,  4.95it/s, loss=1.32, v_num=0]Blank class: 98, argmax blank%: 96.62%
+Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 96.61%
+Blank class: 98, argmax blank%: 96.30%
+Blank class: 98, argmax blank%: 96.64%
+Blank class: 98, argmax blank%: 96.74%
+Blank class: 98, argmax blank%: 96.55%
+Blank class: 98, argmax blank%: 96.72%
+Blank class: 98, argmax blank%: 96.61%
+Blank class: 98, argmax blank%: 97.23%
+Blank class: 98, argmax blank%: 96.79%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 96.97%
+Blank class: 98, argmax blank%: 97.09%
+Blank class: 98, argmax blank%: 97.04%
+Blank class: 98, argmax blank%: 96.81%
+Blank class: 98, argmax blank%: 96.65%
+Blank class: 98, argmax blank%: 96.41%
+Blank class: 98, argmax blank%: 96.57%
+Blank class: 98, argmax blank%: 96.14%
+Epoch 16:  63% 80/127 [00:15<00:09,  5.00it/s, loss=1.31, v_num=0]Blank class: 98, argmax blank%: 96.80%
+Blank class: 98, argmax blank%: 96.45%
+Blank class: 98, argmax blank%: 96.71%
+Blank class: 98, argmax blank%: 96.78%
+Blank class: 98, argmax blank%: 96.75%
+Blank class: 98, argmax blank%: 96.83%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 97.04%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 96.83%
+Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 96.65%
+Blank class: 98, argmax blank%: 96.83%
+Blank class: 98, argmax blank%: 96.70%
+Blank class: 98, argmax blank%: 96.55%
+Blank class: 98, argmax blank%: 96.59%
+Blank class: 98, argmax blank%: 96.59%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.25%
+Epoch 16:  79% 100/127 [00:20<00:05,  4.99it/s, loss=1.33, v_num=0]Blank class: 98, argmax blank%: 97.20%
+Blank class: 98, argmax blank%: 96.87%
+Blank class: 98, argmax blank%: 97.08%
+Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 96.51%
+Blank class: 98, argmax blank%: 96.85%
+Blank class: 98, argmax blank%: 97.02%
+Blank class: 98, argmax blank%: 96.38%
+Blank class: 98, argmax blank%: 96.60%
+Blank class: 98, argmax blank%: 96.42%
+Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.60%
+Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 96.62%
+Blank class: 98, argmax blank%: 96.62%
+Blank class: 98, argmax blank%: 96.75%
+Blank class: 98, argmax blank%: 96.84%
+Blank class: 98, argmax blank%: 96.99%
+Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 97.21%
+Epoch 16:  94% 120/127 [00:23<00:01,  5.04it/s, loss=1.35, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 96.49%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.85%
+Blank class: 98, argmax blank%: 96.48%
+Blank class: 98, argmax blank%: 96.30%
+Blank class: 98, argmax blank%: 96.02%
+Blank class: 98, argmax blank%: 95.76%
+
+Epoch 16: 100% 127/127 [00:25<00:00,  5.04it/s, loss=1.35, v_num=0]
+Epoch 16: 100% 127/127 [00:25<00:00,  5.04it/s, loss=1.35, v_num=0]Epoch 16, global step 2040: 'val/CER' was not in top 1
+Epoch 17:   0% 0/127 [00:00<?, ?it/s, loss=1.35, v_num=0]Blank class: 98, argmax blank%: 96.80%
+Blank class: 98, argmax blank%: 96.78%
+Blank class: 98, argmax blank%: 96.94%
+Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 96.65%
+Blank class: 98, argmax blank%: 96.41%
+Blank class: 98, argmax blank%: 96.57%
+Blank class: 98, argmax blank%: 96.23%
+Blank class: 98, argmax blank%: 96.74%
+Blank class: 98, argmax blank%: 96.60%
+Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.62%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.31%
+Blank class: 98, argmax blank%: 96.64%
+Blank class: 98, argmax blank%: 96.70%
+Blank class: 98, argmax blank%: 96.78%
+Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.92%
+Blank class: 98, argmax blank%: 96.72%
+Epoch 17:  16% 20/127 [00:04<00:23,  4.49it/s, loss=1.27, v_num=0]Blank class: 98, argmax blank%: 96.75%
+Blank class: 98, argmax blank%: 96.87%
+Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 96.94%
+Blank class: 98, argmax blank%: 96.65%
+Blank class: 98, argmax blank%: 97.33%
+Blank class: 98, argmax blank%: 96.52%
+Blank class: 98, argmax blank%: 96.57%
+Blank class: 98, argmax blank%: 96.86%
+Blank class: 98, argmax blank%: 96.84%
+Blank class: 98, argmax blank%: 96.65%
+Blank class: 98, argmax blank%: 96.46%
+Blank class: 98, argmax blank%: 96.64%
+Blank class: 98, argmax blank%: 96.38%
+Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.23%
+Blank class: 98, argmax blank%: 96.32%
+Blank class: 98, argmax blank%: 96.61%
+Blank class: 98, argmax blank%: 96.52%
+Blank class: 98, argmax blank%: 96.83%
+Epoch 17:  31% 40/127 [00:08<00:17,  4.86it/s, loss=1.3, v_num=0] Blank class: 98, argmax blank%: 96.72%
+Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.96%
+Blank class: 98, argmax blank%: 96.72%
+Blank class: 98, argmax blank%: 96.62%
+Blank class: 98, argmax blank%: 96.34%
+Blank class: 98, argmax blank%: 96.89%
+Blank class: 98, argmax blank%: 96.48%
+Blank class: 98, argmax blank%: 96.17%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 96.48%
+Blank class: 98, argmax blank%: 97.12%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 96.75%
+Blank class: 98, argmax blank%: 96.88%
+Blank class: 98, argmax blank%: 96.45%
+Blank class: 98, argmax blank%: 96.75%
+Blank class: 98, argmax blank%: 96.88%
+Blank class: 98, argmax blank%: 96.75%
+Blank class: 98, argmax blank%: 96.35%
+Epoch 17:  47% 60/127 [00:12<00:13,  4.97it/s, loss=1.27, v_num=0]Blank class: 98, argmax blank%: 96.71%
+Blank class: 98, argmax blank%: 96.23%
+Blank class: 98, argmax blank%: 96.22%
+Blank class: 98, argmax blank%: 96.29%
+Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.36%
+Blank class: 98, argmax blank%: 96.79%
+Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 96.53%
+Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.62%
+Blank class: 98, argmax blank%: 96.53%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.36%
+Blank class: 98, argmax blank%: 96.31%
+Blank class: 98, argmax blank%: 96.26%
+Blank class: 98, argmax blank%: 96.59%
+Blank class: 98, argmax blank%: 96.71%
+Blank class: 98, argmax blank%: 96.71%
+Epoch 17:  63% 80/127 [00:15<00:09,  5.04it/s, loss=1.27, v_num=0]Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.92%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.74%
+Blank class: 98, argmax blank%: 97.13%
+Blank class: 98, argmax blank%: 96.51%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.14%
+Blank class: 98, argmax blank%: 96.56%
+Blank class: 98, argmax blank%: 96.71%
+Blank class: 98, argmax blank%: 96.46%
+Blank class: 98, argmax blank%: 96.18%
+Blank class: 98, argmax blank%: 96.56%
+Blank class: 98, argmax blank%: 96.86%
+Blank class: 98, argmax blank%: 96.84%
+Blank class: 98, argmax blank%: 96.79%
+Epoch 17:  79% 100/127 [00:19<00:05,  5.07it/s, loss=1.27, v_num=0]Blank class: 98, argmax blank%: 96.79%
+Blank class: 98, argmax blank%: 96.84%
+Blank class: 98, argmax blank%: 97.00%
+Blank class: 98, argmax blank%: 96.75%
+Blank class: 98, argmax blank%: 96.65%
+Blank class: 98, argmax blank%: 97.01%
+Blank class: 98, argmax blank%: 96.86%
+Blank class: 98, argmax blank%: 97.19%
+Blank class: 98, argmax blank%: 96.84%
+Blank class: 98, argmax blank%: 96.49%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.16%
+Blank class: 98, argmax blank%: 96.49%
+Blank class: 98, argmax blank%: 96.62%
+Blank class: 98, argmax blank%: 96.43%
+Blank class: 98, argmax blank%: 96.45%
+Blank class: 98, argmax blank%: 96.60%
+Blank class: 98, argmax blank%: 96.35%
+Blank class: 98, argmax blank%: 96.43%
+Blank class: 98, argmax blank%: 96.82%
+Epoch 17:  94% 120/127 [00:23<00:01,  5.12it/s, loss=1.25, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.83%
+Blank class: 98, argmax blank%: 96.41%
+Blank class: 98, argmax blank%: 96.13%
+Blank class: 98, argmax blank%: 95.81%
+Blank class: 98, argmax blank%: 95.67%
+
+Epoch 17: 100% 127/127 [00:24<00:00,  5.10it/s, loss=1.25, v_num=0]
+Epoch 17: 100% 127/127 [00:24<00:00,  5.10it/s, loss=1.25, v_num=0]Epoch 17, global step 2160: 'val/CER' reached 42.71156 (best 42.71156), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=17-step=2160.ckpt' as top 1
+Epoch 18:   0% 0/127 [00:00<?, ?it/s, loss=1.25, v_num=0]Blank class: 98, argmax blank%: 96.95%
+Blank class: 98, argmax blank%: 97.04%
+Blank class: 98, argmax blank%: 96.81%
+Blank class: 98, argmax blank%: 96.61%
+Blank class: 98, argmax blank%: 96.98%
+Blank class: 98, argmax blank%: 96.78%
+Blank class: 98, argmax blank%: 96.55%
+Blank class: 98, argmax blank%: 96.66%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.38%
+Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 96.53%
+Blank class: 98, argmax blank%: 96.60%
+Blank class: 98, argmax blank%: 96.30%
+Blank class: 98, argmax blank%: 96.48%
+Blank class: 98, argmax blank%: 96.32%
+Blank class: 98, argmax blank%: 96.31%
+Blank class: 98, argmax blank%: 96.36%
+Blank class: 98, argmax blank%: 96.31%
+Epoch 18:  16% 20/127 [00:04<00:24,  4.41it/s, loss=1.23, v_num=0]Blank class: 98, argmax blank%: 96.59%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 96.88%
+Blank class: 98, argmax blank%: 96.33%
+Blank class: 98, argmax blank%: 96.51%
+Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.93%
+Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 96.79%
+Blank class: 98, argmax blank%: 96.82%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 96.70%
+Blank class: 98, argmax blank%: 96.57%
+Blank class: 98, argmax blank%: 96.70%
+Blank class: 98, argmax blank%: 96.43%
+Blank class: 98, argmax blank%: 96.57%
+Blank class: 98, argmax blank%: 96.38%
+Blank class: 98, argmax blank%: 96.44%
+Epoch 18:  31% 40/127 [00:08<00:18,  4.77it/s, loss=1.22, v_num=0]Blank class: 98, argmax blank%: 96.49%
+Blank class: 98, argmax blank%: 96.30%
+Blank class: 98, argmax blank%: 96.46%
+Blank class: 98, argmax blank%: 96.69%
+Blank class: 98, argmax blank%: 96.50%
+Blank class: 98, argmax blank%: 96.43%
+Blank class: 98, argmax blank%: 96.57%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.34%
+Blank class: 98, argmax blank%: 96.34%
+Blank class: 98, argmax blank%: 96.37%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 96.56%
+Blank class: 98, argmax blank%: 96.88%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 96.72%
+Blank class: 98, argmax blank%: 96.75%
+Blank class: 98, argmax blank%: 96.75%
+Blank class: 98, argmax blank%: 96.78%
+Blank class: 98, argmax blank%: 96.91%
+Epoch 18:  47% 60/127 [00:12<00:13,  4.87it/s, loss=1.21, v_num=0]Blank class: 98, argmax blank%: 96.56%
+Blank class: 98, argmax blank%: 96.45%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.60%
+Blank class: 98, argmax blank%: 96.16%
+Blank class: 98, argmax blank%: 96.79%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.55%
+Blank class: 98, argmax blank%: 96.46%
+Blank class: 98, argmax blank%: 96.79%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.53%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 96.85%
+Blank class: 98, argmax blank%: 96.35%
+Blank class: 98, argmax blank%: 96.26%
+Blank class: 98, argmax blank%: 96.60%
+Epoch 18:  63% 80/127 [00:16<00:09,  4.97it/s, loss=1.19, v_num=0]Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.99%
+Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 96.29%
+Blank class: 98, argmax blank%: 96.66%
+Blank class: 98, argmax blank%: 96.85%
+Blank class: 98, argmax blank%: 96.70%
+Blank class: 98, argmax blank%: 96.34%
+Blank class: 98, argmax blank%: 96.55%
+Blank class: 98, argmax blank%: 96.35%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.95%
+Blank class: 98, argmax blank%: 96.56%
+Blank class: 98, argmax blank%: 96.64%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 96.36%
+Blank class: 98, argmax blank%: 96.30%
+Blank class: 98, argmax blank%: 96.39%
+Blank class: 98, argmax blank%: 96.42%
+Epoch 18:  79% 100/127 [00:19<00:05,  5.03it/s, loss=1.22, v_num=0]Blank class: 98, argmax blank%: 96.30%
+Blank class: 98, argmax blank%: 96.45%
+Blank class: 98, argmax blank%: 96.91%
+Blank class: 98, argmax blank%: 96.44%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.32%
+Blank class: 98, argmax blank%: 96.72%
+Blank class: 98, argmax blank%: 96.12%
+Blank class: 98, argmax blank%: 96.41%
+Blank class: 98, argmax blank%: 96.62%
+Blank class: 98, argmax blank%: 96.32%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 96.52%
+Blank class: 98, argmax blank%: 96.55%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 96.29%
+Blank class: 98, argmax blank%: 97.06%
+Blank class: 98, argmax blank%: 96.50%
+Blank class: 98, argmax blank%: 96.51%
+Epoch 18:  94% 120/127 [00:23<00:01,  5.05it/s, loss=1.22, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 96.12%
+Blank class: 98, argmax blank%: 96.28%
+Blank class: 98, argmax blank%: 96.42%
+Blank class: 98, argmax blank%: 95.88%
+Blank class: 98, argmax blank%: 95.75%
+Blank class: 98, argmax blank%: 95.45%
+Blank class: 98, argmax blank%: 95.31%
+
+Epoch 18: 100% 127/127 [00:25<00:00,  5.05it/s, loss=1.22, v_num=0]
+Epoch 18: 100% 127/127 [00:25<00:00,  5.04it/s, loss=1.22, v_num=0]Epoch 18, global step 2280: 'val/CER' reached 38.39167 (best 38.39167), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=18-step=2280.ckpt' as top 1
+Epoch 19:   0% 0/127 [00:00<?, ?it/s, loss=1.22, v_num=0]Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.16%
+Blank class: 98, argmax blank%: 96.46%
+Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.44%
+Blank class: 98, argmax blank%: 96.89%
+Blank class: 98, argmax blank%: 96.78%
+Blank class: 98, argmax blank%: 96.62%
+Blank class: 98, argmax blank%: 96.36%
+Blank class: 98, argmax blank%: 96.71%
+Blank class: 98, argmax blank%: 96.18%
+Blank class: 98, argmax blank%: 96.78%
+Blank class: 98, argmax blank%: 96.40%
+Blank class: 98, argmax blank%: 96.38%
+Blank class: 98, argmax blank%: 96.59%
+Blank class: 98, argmax blank%: 96.36%
+Blank class: 98, argmax blank%: 96.35%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.50%
+Blank class: 98, argmax blank%: 96.39%
+Epoch 19:  16% 20/127 [00:04<00:24,  4.45it/s, loss=1.2, v_num=0] Blank class: 98, argmax blank%: 96.47%
+Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.57%
+Blank class: 98, argmax blank%: 96.30%
+Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 96.65%
+Blank class: 98, argmax blank%: 96.50%
+Blank class: 98, argmax blank%: 96.66%
+Blank class: 98, argmax blank%: 96.70%
+Blank class: 98, argmax blank%: 96.32%
+Blank class: 98, argmax blank%: 96.45%
+Blank class: 98, argmax blank%: 96.05%
+Blank class: 98, argmax blank%: 96.43%
+Blank class: 98, argmax blank%: 96.49%
+Blank class: 98, argmax blank%: 96.77%
+Blank class: 98, argmax blank%: 96.21%
+Blank class: 98, argmax blank%: 96.55%
+Blank class: 98, argmax blank%: 96.45%
+Blank class: 98, argmax blank%: 96.36%
+Epoch 19:  31% 40/127 [00:08<00:17,  4.87it/s, loss=1.18, v_num=0]Blank class: 98, argmax blank%: 96.90%
+Blank class: 98, argmax blank%: 96.32%
+Blank class: 98, argmax blank%: 96.53%
+Blank class: 98, argmax blank%: 96.66%
+Blank class: 98, argmax blank%: 96.43%
+Blank class: 98, argmax blank%: 96.60%
+Blank class: 98, argmax blank%: 96.78%
+Blank class: 98, argmax blank%: 96.46%
+Blank class: 98, argmax blank%: 96.37%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.51%
+Blank class: 98, argmax blank%: 96.73%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.46%
+Blank class: 98, argmax blank%: 96.88%
+Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.35%
+Blank class: 98, argmax blank%: 96.44%
+Blank class: 98, argmax blank%: 96.34%
+Blank class: 98, argmax blank%: 96.31%
+Epoch 19:  47% 60/127 [00:12<00:13,  4.93it/s, loss=1.2, v_num=0] Blank class: 98, argmax blank%: 96.89%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.50%
+Blank class: 98, argmax blank%: 96.35%
+Blank class: 98, argmax blank%: 96.49%
+Blank class: 98, argmax blank%: 96.71%
+Blank class: 98, argmax blank%: 96.37%
+Blank class: 98, argmax blank%: 96.29%
+Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.34%
+Blank class: 98, argmax blank%: 96.52%
+Blank class: 98, argmax blank%: 96.49%
+Blank class: 98, argmax blank%: 96.38%
+Blank class: 98, argmax blank%: 96.39%
+Blank class: 98, argmax blank%: 96.50%
+Blank class: 98, argmax blank%: 96.31%
+Blank class: 98, argmax blank%: 96.79%
+Blank class: 98, argmax blank%: 96.70%
+Blank class: 98, argmax blank%: 96.46%
+Epoch 19:  63% 80/127 [00:15<00:09,  5.00it/s, loss=1.19, v_num=0]Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.76%
+Blank class: 98, argmax blank%: 96.51%
+Blank class: 98, argmax blank%: 96.52%
+Blank class: 98, argmax blank%: 96.83%
+Blank class: 98, argmax blank%: 96.38%
+Blank class: 98, argmax blank%: 96.50%
+Blank class: 98, argmax blank%: 96.66%
+Blank class: 98, argmax blank%: 96.24%
+Blank class: 98, argmax blank%: 96.65%
+Blank class: 98, argmax blank%: 96.43%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 96.15%
+Blank class: 98, argmax blank%: 96.31%
+Blank class: 98, argmax blank%: 96.63%
+Blank class: 98, argmax blank%: 96.82%
+Blank class: 98, argmax blank%: 96.58%
+Blank class: 98, argmax blank%: 96.61%
+Blank class: 98, argmax blank%: 96.57%
+Blank class: 98, argmax blank%: 96.55%
+Epoch 19:  79% 100/127 [00:19<00:05,  5.06it/s, loss=1.2, v_num=0] Blank class: 98, argmax blank%: 96.54%
+Blank class: 98, argmax blank%: 96.19%
+Blank class: 98, argmax blank%: 96.37%
+Blank class: 98, argmax blank%: 96.30%
+Blank class: 98, argmax blank%: 96.69%
+Blank class: 98, argmax blank%: 96.50%
+Blank class: 98, argmax blank%: 96.80%
+Blank class: 98, argmax blank%: 96.71%
+Blank class: 98, argmax blank%: 96.88%
+Blank class: 98, argmax blank%: 96.53%
+Blank class: 98, argmax blank%: 96.67%
+Blank class: 98, argmax blank%: 96.42%
+Blank class: 98, argmax blank%: 96.32%
+Blank class: 98, argmax blank%: 96.19%
+Blank class: 98, argmax blank%: 96.05%
+Blank class: 98, argmax blank%: 96.68%
+Blank class: 98, argmax blank%: 96.80%
+Blank class: 98, argmax blank%: 96.28%
+Blank class: 98, argmax blank%: 96.46%
+Blank class: 98, argmax blank%: 96.13%
+Epoch 19:  94% 120/127 [00:23<00:01,  5.08it/s, loss=1.2, v_num=0]
+Validation: 0it [00:00, ?it/s]
+Validation:   0% 0/7 [00:00<?, ?it/s]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 95.98%
+Blank class: 98, argmax blank%: 96.19%
+Blank class: 98, argmax blank%: 96.41%
+Blank class: 98, argmax blank%: 95.79%
+Blank class: 98, argmax blank%: 95.72%
+Blank class: 98, argmax blank%: 95.42%
+Blank class: 98, argmax blank%: 95.18%
+
+Epoch 19: 100% 127/127 [00:25<00:00,  5.06it/s, loss=1.2, v_num=0]
+Epoch 19: 100% 127/127 [00:25<00:00,  5.06it/s, loss=1.2, v_num=0]Epoch 19, global step 2400: 'val/CER' reached 37.74923 (best 37.74923), saving model to '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=19-step=2400.ckpt' as top 1
+`Trainer.fit` stopped: `max_epochs=20` reached.
+Epoch 19: 100% 127/127 [00:25<00:00,  4.97it/s, loss=1.2, v_num=0]
+/usr/local/lib/python3.12/dist-packages/torch/nn/utils/weight_norm.py:28: UserWarning: torch.nn.utils.weight_norm is deprecated in favor of torch.nn.utils.parametrizations.weight_norm.
+  warnings.warn("torch.nn.utils.weight_norm is deprecated in favor of torch.nn.utils.parametrizations.weight_norm.")
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+Validation DataLoader 0:   0% 0/7 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 95.98%
+Blank class: 98, argmax blank%: 96.19%
+Blank class: 98, argmax blank%: 96.41%
+Blank class: 98, argmax blank%: 95.79%
+Blank class: 98, argmax blank%: 95.72%
+Blank class: 98, argmax blank%: 95.42%
+Blank class: 98, argmax blank%: 95.18%
+Validation DataLoader 0: 100% 7/7 [00:00<00:00, 10.01it/s]
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  Runningstage.validating  ┃                           ┃
+┃          metric           ┃       DataLoader 0        ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│          val/CER          │     37.74922561645508     │
+│          val/DER          │    1.4842711687088013     │
+│          val/IER          │     25.94151496887207     │
+│          val/SER          │     10.32343864440918     │
+│         val/loss          │    1.0861839056015015     │
+└───────────────────────────┴───────────────────────────┘
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+Testing DataLoader 0:   0% 0/1 [00:00<?, ?it/s]Blank class: 98, argmax blank%: 99.61%
+Testing DataLoader 0: 100% 1/1 [00:01<00:00,  1.46s/it]
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃   Runningstage.testing    ┃                           ┃
+┃          metric           ┃       DataLoader 0        ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│         test/CER          │     90.64188385009766     │
+│         test/DER          │            0.0            │
+│         test/IER          │     90.36092376708984     │
+│         test/SER          │    0.2809595763683319     │
+│         test/loss         │       3.80908203125       │
+└───────────────────────────┴───────────────────────────┘
+{'val_metrics': [{'val/loss': 1.0861839056015015,
+                  'val/CER': 37.74922561645508,
+                  'val/IER': 25.94151496887207,
+                  'val/DER': 1.4842711687088013,
+                  'val/SER': 10.32343864440918}],
+ 'test_metrics': [{'test/loss': 3.80908203125,
+                   'test/CER': 90.64188385009766,
+                   'test/IER': 90.36092376708984,
+                   'test/DER': 0.0,
+                   'test/SER': 0.2809595763683319}],
+ 'best_checkpoint': '/content/drive/MyDrive/emg2qwerty/logs/2026-03-11/10-08-57/checkpoints/epoch=19-step=2400.ckpt'}
+sys:1: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
