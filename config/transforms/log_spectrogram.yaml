@@ -49,7 +49,7 @@ transforms:
     - ${temporal_jitter}
     - ${amplitude_scale}   # before logspec: perturb raw signal gain
     - ${gaussian_noise}    # before logspec: additive noise in linear domain
-    #- ${channel_dropout}
+    # - ${channel_dropout}
     - ${logspec}
     - ${specaug}
 
