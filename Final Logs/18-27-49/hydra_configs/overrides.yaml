@@ -1,0 +1,4 @@
+- user=single_user
+- trainer.accelerator=gpu
+- trainer.devices=1
+- transforms.train=[${to_tensor},${band_rotation},${temporal_jitter},${amplitude_scale},${gaussian_noise},${logspec},${specaug}]

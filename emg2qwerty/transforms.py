@@ -190,6 +190,104 @@ class LogSpectrogram:
 
 
 @dataclass
+class GaussianNoise:
+    """Adds independent Gaussian noise to each sample of an EMG tensor to
+    simulate electrode contact noise, motion artifacts, and environmental
+    interference. The input must be of shape (T, ...).
+
+    Noise is sampled fresh every call, so each window in a batch receives
+    a unique realisation — important for preventing the model from memorising
+    noise patterns.
+
+    Args:
+        std (float): Standard deviation of the Gaussian noise. A value in
+            the range [0.01, 0.05] is recommended for normalised EMG signals.
+            Too large a value will corrupt keystroke-onset transients.
+            (default: 0.01)
+        p (float): Probability of applying the transform. Setting p < 1.0
+            provides an additional source of stochasticity so the model sees
+            both clean and noisy examples within the same epoch.
+            (default: 1.0)
+    """
+
+    std: float = 0.01
+    p: float = 1.0
+
+    def __post_init__(self) -> None:
+        assert self.std >= 0, "std must be non-negative"
+        assert 0.0 <= self.p <= 1.0, "p must be in [0, 1]"
+
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        if self.std == 0.0 or np.random.random() >= self.p:
+            return tensor
+        noise = torch.randn_like(tensor) * self.std
+        return tensor + noise
+
+@dataclass
+class ChannelDropout:
+    """Randomly zeros out entire electrode channels to simulate poor electrode
+    contact or lift-off. Applied independently per band since left/right wrist
+    electrodes fail independently in practice.
+
+    Input shape: (..., C) where C is the number of electrode channels.
+
+    Args:
+        p (float): Probability of dropping each individual channel.
+            At p=0.1 with 16 channels, ~1-2 channels drop per call on average.
+            Keep below 0.2 to avoid dropping so many channels that keystroke
+            patterns become unrecoverable. (default: 0.1)
+    """
+
+    p: float = 0.1
+
+    def __post_init__(self) -> None:
+        assert 0.0 <= self.p < 1.0, "p must be in [0, 1)"
+
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        if self.p == 0.0:
+            return tensor
+        # Mask shape broadcasts over all dims except the last (channel) dim
+        mask = torch.bernoulli(
+            torch.full((tensor.shape[-1],), 1.0 - self.p)
+        ).to(tensor)
+        return tensor * mask
+
+@dataclass
+class AmplitudeScale:
+    """Scales the amplitude of an EMG tensor by a random factor drawn
+    uniformly from [``min_scale``, ``max_scale``]. This simulates
+    inter-session variability caused by electrode placement drift, skin
+    impedance differences, and user-to-user amplitude variation.
+
+    A single scale factor is drawn per call and applied globally so that
+    relative amplitudes across bands and electrode channels are preserved —
+    only the overall gain changes. The input may be of any shape.
+
+    Args:
+        min_scale (float): Lower bound of the uniform scale range.
+            (default: 0.8)
+        max_scale (float): Upper bound of the uniform scale range.
+            (default: 1.2)
+        p (float): Probability of applying the transform. (default: 1.0)
+    """
+
+    min_scale: float = 0.8
+    max_scale: float = 1.2
+    p: float = 1.0
+
+    def __post_init__(self) -> None:
+        assert self.min_scale > 0, "min_scale must be positive"
+        assert self.max_scale >= self.min_scale, "max_scale must be >= min_scale"
+        assert 0.0 <= self.p <= 1.0, "p must be in [0, 1]"
+
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        if np.random.random() >= self.p:
+            return tensor
+        scale = np.random.uniform(self.min_scale, self.max_scale)
+        return tensor * scale
+
+
+@dataclass
 class SpecAugment:
     """Applies time and frequency masking as per the paper
     "SpecAugment: A Simple Data Augmentation Method for Automatic Speech

@@ -92,7 +92,7 @@ class WindowedEMGDataModule(pl.LightningDataModule):
                     transform=self.test_transform,
                     # Feed the entire session at once without windowing/padding
                     # at test time for more realism
-                    window_length=None,
+                    window_length=None,  
                     padding=(0, 0),
                     jitter=False,
                 )
@@ -305,7 +305,6 @@ class ConformerCTCModule(pl.LightningModule):
             depthwise_conv_kernel_size=depthwise_conv_kernel_size,
         )
 
-        # 1. 把原来的 self.model 拆开：先定义前端特征提取
         self.frontend = nn.Sequential(
             SpectrogramNorm(channels=self.NUM_BANDS * self.ELECTRODE_CHANNELS),
             MultiBandRotationInvariantMLP(
@@ -316,16 +315,13 @@ class ConformerCTCModule(pl.LightningModule):
             nn.Flatten(start_dim=2),
         )
 
-        # 2. 定义尾部分类器
         self.classifier = nn.Sequential(
             nn.Linear(self.conformer_encoder.out_features, charset().num_classes),
             nn.LogSoftmax(dim=-1),
         )
 
-        # 3. 修复致命 Bug：加上 blank=charset().null_class
         self.ctc_loss = nn.CTCLoss(blank=charset().null_class, zero_infinity=True)
 
-        # Decoder & Metrics 保持不变
         self.decoder = instantiate(decoder)
         metrics = MetricCollection([CharacterErrorRates()])
         self.metrics = nn.ModuleDict(
@@ -336,7 +332,6 @@ class ConformerCTCModule(pl.LightningModule):
         )
 
 
-    # 4. 修改 forward，接收两个参数
     def forward(self, inputs: torch.Tensor, input_lengths: torch.Tensor) -> torch.Tensor:
         x = self.frontend(inputs)
         x = self.conformer_encoder(x, input_lengths)
@@ -351,8 +346,6 @@ class ConformerCTCModule(pl.LightningModule):
         input_lengths = batch["input_lengths"]
         target_lengths = batch["target_lengths"]
         N = len(input_lengths)  # batch_size
-
-        # 5. 修改这里：调用 forward 时把 input_lengths 传进去
         emissions = self.forward(inputs, input_lengths)
 
         T_diff = 0
@@ -364,8 +357,7 @@ class ConformerCTCModule(pl.LightningModule):
             input_lengths=emission_lengths,  # (N,)
             target_lengths=target_lengths,  # (N,)
         )
-        
-        # ... _step 函数后半部分（Decoder计算和Metric更新）保持原样不变 ...
+
 
         # Decode emissions
         predictions = self.decoder.decode_batch(

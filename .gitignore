@@ -47,8 +47,8 @@ logs/
 lightning_logs/
 
 # Data
-data
-bids_data
+data/
+bids_data/
 *.tar.gz
 
 # LM
@@ -56,3 +56,32 @@ wikitext-103-raw*
 
 
 models/
+
+Colab_setup.ipynb
+
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+
+eval_all.py
+
+.github
+
+emg2qwerty.egg-info/
+
+scripts/
+
+.pre-commit-config.yaml
+clean_test_results.txt
+CODE_OF_CONDUCT.md
+Colab_setup.ipynb
+CONTRIBUTING.md
+environment.yml
+eval_all.py
+learning_dynamics.pdf
+LICENSE
+origin_beam_test_results.txt
+requirements.txt
+setup.cfg
+setup.py
+*.pdf
+*.txt

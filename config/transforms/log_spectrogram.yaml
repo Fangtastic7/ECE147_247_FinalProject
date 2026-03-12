@@ -13,6 +13,17 @@ temporal_jitter:
   _target_: emg2qwerty.transforms.TemporalAlignmentJitter
   max_offset: 120  # Max 60ms jitter for 2kHz EMG
 
+amplitude_scale:
+  _target_: emg2qwerty.transforms.AmplitudeScale
+  min_scale: 0.8
+  max_scale: 1.2
+  p: 1.0
+
+gaussian_noise:
+  _target_: emg2qwerty.transforms.GaussianNoise
+  std: 0.02
+  p: 1.0
+
 logspec:
   _target_: emg2qwerty.transforms.LogSpectrogram
   n_fft: 64
@@ -25,11 +36,20 @@ specaug:
   n_freq_masks: 2
   freq_mask_param: 4
 
+channel_dropout:
+  _target_: emg2qwerty.transforms.ForEach   # i.i.d dropout per band
+  transform:
+    _target_: emg2qwerty.transforms.ChannelDropout
+    p: 0.1
+
 transforms:
   train:
     - ${to_tensor}
     - ${band_rotation}
     - ${temporal_jitter}
+    # - ${amplitude_scale} # before logspec: perturb raw signal gain
+    # - ${gaussian_noise} # before logspec: additive noise in linear domain
+    # - ${channel_dropout} 
     - ${logspec}
     - ${specaug}
 
