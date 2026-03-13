@@ -8,7 +8,7 @@ Each implementation of the model is maintained in a **separate Git branch** to i
 | Model Architecture        | Contributor (branch) |
 |---------------------------|-------------|
 | Google Inception          | Austin      |
-| Conformer Architecture    | Cooper      |
+| Conformer Architecture    | Hongyi(Cooper)      |
 | Temporal Model            | Akshara     |
 | CNN-BiLSTM                | Maxwell     |
 
