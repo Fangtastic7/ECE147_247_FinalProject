@@ -307,7 +307,7 @@ class TemporalBlock(nn.Module):
         self.net = nn.Sequential(self.conv1, self.chomp1, self.relu1, self.dropout1,
                                  self.conv2, self.chomp2, self.relu2, self.dropout2)
         
-        self.layer_norm = nn.LayerNorm(n_outputs)
+        self.layer_norm = nn.LayerNorm(n_outputs) # added to original Temporal Block
         
         self.downsample = nn.Conv1d(n_inputs, n_outputs, 1) if n_inputs != n_outputs else None
         self.relu = nn.ReLU()
