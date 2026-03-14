@@ -233,8 +233,8 @@ class TDSConvCTCModule(pl.LightningModule):
         
         #top_classes = emissions.argmax(dim=-1)
         #print("unique predicted classes:", torch.unique(top_classes))
-        print("mean:", emissions.mean().item())
-        print("std:", emissions.std().item())
+        #print("mean:", emissions.mean().item())
+        #print("std:", emissions.std().item())
 
         # Update metrics
         metrics = self.metrics[f"{phase}_metrics"]
@@ -297,8 +297,8 @@ class TCNCTCModule(pl.LightningModule):
 
         num_features = self.NUM_BANDS * mlp_features[-1]
         
-        block_channel_size = 256
-        num_channels = [block_channel_size] * 10 # tune depth
+        block_channel_size = 256 # size of temporal block 
+        num_channels = [block_channel_size] * 10 # tune depth (# of Temporal Blocks)
 
         # Model
         # inputs: (T, N, bands=2, electrode_channels=16, freq)
@@ -313,6 +313,7 @@ class TCNCTCModule(pl.LightningModule):
             ),
             # (T, N, num_features)
             nn.Flatten(start_dim=2),
+            # added TCN block , tuned parameters
             TCNEncoder(
                 num_features=num_features,
                 num_channels=num_channels,
@@ -324,7 +325,7 @@ class TCNCTCModule(pl.LightningModule):
             nn.Linear(block_channel_size, charset().num_classes),
             nn.LogSoftmax(dim=-1),
         )
-        self.model[-2].bias.data[charset().null_class] = -5.0
+        self.model[-2].bias.data[charset().null_class] = -5.0 # don't favor blank predictions 
 
         # Criterion
         self.ctc_loss = nn.CTCLoss(blank=charset().null_class)
